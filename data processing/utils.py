@@ -129,7 +129,7 @@ def remove_spots_in_masked_regions(spotList,mask):
 		x = s[0]
 		y = s[1]
 		if mask[int(y),int(x)] == 0:
-		s[-1] = 0
+			s[-1] = 0
 	spot_list = np.array([s for s in spotList if s[-1] > 0])
 	return spot_list
 
@@ -138,20 +138,20 @@ def extract_spot_data(I_background_removed,I_raw,spot_list,i,j,k,settings,extens
 	ny, nx, nc = I_background_removed.shape
 	I_background_removed = I_background_removed.astype('float')
 	I_raw = I_raw/255
-	columns = ['FOV_row','FOV_col','x','y','r','R','G','B','R_max','G_max','B_max','lap_total','lap_max','numPixels','numSaturatedPixels','idx']
+	columns = ['FOV_row','FOV_col','FOV_z','x','y','r','R','G','B','R_max','G_max','B_max','lap_total','lap_max','numPixels','numSaturatedPixels','idx']
 	spot_data_pd = pd.DataFrame(columns=columns)
 	idx = 0
-	for s in spotList:
+	for s in spot_list:
 		# get spot
 		x = int(s[0])
 		y = int(s[1])
-		r = int(s[2])
-		x_min = max(x - r - extension,0)
-		y_min = max(y - r - extension,0)
-		x_max = min(x + r + extension,nx-1)
-		y_max = min(y + r + extension,ny-1)
-		cropped = I_background_removed[y_min*downsample_factor:(y_max+1)*downsample_factor,x_min*downsample_factor:(x_max+1)*downsample_factor,:]
-		cropped_raw = I_raw[y_min*downsample_factor:(y_max+1)*downsample_factor,x_min*downsample_factor:(x_max+1)*downsample_factor,:]
+		r = s[2]
+		x_min = max(int((x - r - extension)*downsize_factor),0)
+		y_min = max(int((y - r - extension)*downsize_factor),0)
+		x_max = min(int((x + r + extension)*downsize_factor),nx-1)
+		y_max = min(int((y + r + extension)*downsize_factor),ny-1)
+		cropped = I_background_removed[y_min:(y_max+1),x_min:(x_max+1),:]
+		cropped_raw = I_raw[y_min:(y_max+1),x_min:(x_max+1),:]
 		# extract spot data
 		B = cp.asnumpy(cp.sum(cropped[:,:,0]))
 		G = cp.asnumpy(cp.sum(cropped[:,:,1]))
@@ -165,8 +165,9 @@ def extract_spot_data(I_background_removed,I_raw,spot_list,i,j,k,settings,extens
 		numPixels = cropped[:,:,0].size
 		numSaturatedPixels = cp.asnumpy(cp.sum(cropped_raw == 1))
 		# add spot entry
-		spot_entry = pd.DataFrame.from_dict({'FOV_row':[i],'FOV_col':[j],'FOV_z':[z],'x':[x],'y':[y],'r':[r],'R':[R],'G':[G],'B':[B],'R_max':[R_max],'G_max':[G_max],'B_max':[B_max],'lap_total':[lap_total],'lap_max':[lap_max],'numPixels':[numPixels],'numSaturatedPixels':[numSaturatedPixels],'idx':[idx]})
-		data_csv_pd = data_csv_pd.append(spot_entry, ignore_index=True, sort=False)
+		spot_entry = pd.DataFrame.from_dict({'FOV_row':[i],'FOV_col':[j],'FOV_z':[k],'x':[x],'y':[y],'r':[r],'R':[R],'G':[G],'B':[B],'R_max':[R_max],'G_max':[G_max],'B_max':[B_max],'lap_total':[lap_total],'lap_max':[lap_max],'numPixels':[numPixels],'numSaturatedPixels':[numSaturatedPixels],'idx':[idx]})
+		# spot_data_pd = spot_data_pd.append(spot_entry, ignore_index=True, sort=False)
+		spot_data_pd = pd.concat([spot_data_pd,spot_entry])
 		# increament idx
 		idx = idx + 1
 	return spot_data_pd
@@ -174,7 +175,7 @@ def extract_spot_data(I_background_removed,I_raw,spot_list,i,j,k,settings,extens
 def process_spots(I_background_removed,I_raw,spot_list,i,j,k,settings,I_mask=None):
 	# get rid of spots in masked out regions
 	if I_mask!=None:
-	spot_list = remove_spots_in_maskedRegions(spot_list,I_mask)
+		spot_list = remove_spots_in_masked_regions(spot_list,I_mask)
 	# extract spot statistics
 	spot_data_pd = extract_spot_data(I_background_removed,I_raw,spot_list,i,j,k,settings)
 	return spot_list, spot_data_pd
