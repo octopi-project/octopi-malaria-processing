@@ -49,6 +49,10 @@ if __name__ == '__main__':
     parameters['row_end'] = 2
     parameters['column_end'] = 2
   columns = range(parameters['column_start'], parameters['column_end'])
+  parameters['crop_x0'] = 100
+  parameters['crop_x1'] = 2900
+  parameters['crop_y0'] = 100
+  parameters['crop_y1'] = 2900
 
   # processing
   print('processing ' + dataset_id + ' in ' + bucket)
