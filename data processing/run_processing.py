@@ -56,4 +56,4 @@ if __name__ == '__main__':
   # processing
   print('processing ' + dataset_id + ' in ' + bucket)
   with get_context("spawn").Pool(processes=4) as pool:
-    pool.map(partial(process_column,gcs_settings=gcs_settings,bucket=bucket,dataset_id=dataset_id,parameters=parameters),columns)
+    pool.map(partial(process_column,gcs_settings=gcs_settings,bucket=bucket,dataset_id=dataset_id,parameters=parameters,settings=settings),columns)
