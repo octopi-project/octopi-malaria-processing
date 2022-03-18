@@ -1,6 +1,6 @@
 import imageio
 import cv2
-import cupy as cp # conda install -c conda-forge cupy
+import cupy as cp # conda install -c conda-forge cupy==10.2
 import cupyx.scipy.ndimage
 
 def imread_gcsfs(fs,file_path):
