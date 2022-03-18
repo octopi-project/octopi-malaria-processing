@@ -2,9 +2,11 @@ import imageio
 import cv2
 import cupy as cp # conda install -c conda-forge cupy==10.2
 import cupyx.scipy.ndimage
+from cupyx.scipy.ndimage.filters import laplace
 from skimage.feature.blob import _prune_blobs
 import numpy as np
 from scipy import signal
+import pandas as pd
 
 def imread_gcsfs(fs,file_path):
 	img_bytes = fs.cat(file_path)
@@ -119,3 +121,61 @@ def add_bounding_box(I,x,y,r,extension=2,color=[0.6,0,0]):
 		I[y_max,x_min:x_max+1,i] = color[i]
 		I[y_min:y_max+1,x_min,i] = color[i]
 		I[y_min:y_max+1,x_max,i] = color[i]
+
+def remove_spots_in_masked_regions(spotList,mask):
+	mask = mask.astype('float')/255
+	mask = np.sum(mask,axis=-1) # masked out region has pixel value 0 ;# mask[mask>0] = 1 #         cv2.imshow('mask',mask) # cv2.waitKey(0)
+	for s in spotList:
+		x = s[0]
+		y = s[1]
+		if mask[int(y),int(x)] == 0:
+		s[-1] = 0
+	spot_list = np.array([s for s in spotList if s[-1] > 0])
+	return spot_list
+
+def extract_spot_data(I_background_removed,I_raw,spot_list,i,j,k,settings,extension=1):
+	downsize_factor=settings['spot_detection_downsize_factor']
+	ny, nx, nc = I_background_removed.shape
+	I_background_removed = I_background_removed.astype('float')
+	I_raw = I_raw/255
+	columns = ['FOV_row','FOV_col','x','y','r','R','G','B','R_max','G_max','B_max','lap_total','lap_max','numPixels','numSaturatedPixels','idx']
+	spot_data_pd = pd.DataFrame(columns=columns)
+	idx = 0
+	for s in spotList:
+		# get spot
+		x = int(s[0])
+		y = int(s[1])
+		r = int(s[2])
+		x_min = max(x - r - extension,0)
+		y_min = max(y - r - extension,0)
+		x_max = min(x + r + extension,nx-1)
+		y_max = min(y + r + extension,ny-1)
+		cropped = I_background_removed[y_min*downsample_factor:(y_max+1)*downsample_factor,x_min*downsample_factor:(x_max+1)*downsample_factor,:]
+		cropped_raw = I_raw[y_min*downsample_factor:(y_max+1)*downsample_factor,x_min*downsample_factor:(x_max+1)*downsample_factor,:]
+		# extract spot data
+		B = cp.asnumpy(cp.sum(cropped[:,:,0]))
+		G = cp.asnumpy(cp.sum(cropped[:,:,1]))
+		R = cp.asnumpy(cp.sum(cropped[:,:,2]))
+		B_max = cp.asnumpy(cp.max(cropped[:,:,0]))
+		G_max = cp.asnumpy(cp.max(cropped[:,:,1]))
+		R_max = cp.asnumpy(cp.max(cropped[:,:,2]))
+		lap = laplace(cp.sum(cropped,2))
+		lap_total = cp.asnumpy(cp.sum(cp.abs(lap)))
+		lap_max = cp.asnumpy(cp.max(cp.abs(lap)))
+		numPixels = cropped[:,:,0].size
+		numSaturatedPixels = cp.asnumpy(cp.sum(cropped_raw == 1))
+		# add spot entry
+		spot_entry = pd.DataFrame.from_dict({'FOV_row':[i],'FOV_col':[j],'FOV_z':[z],'x':[x],'y':[y],'r':[r],'R':[R],'G':[G],'B':[B],'R_max':[R_max],'G_max':[G_max],'B_max':[B_max],'lap_total':[lap_total],'lap_max':[lap_max],'numPixels':[numPixels],'numSaturatedPixels':[numSaturatedPixels],'idx':[idx]})
+		data_csv_pd = data_csv_pd.append(spot_entry, ignore_index=True, sort=False)
+		# increament idx
+		idx = idx + 1
+	return spot_data_pd
+
+def process_spots(I_background_removed,I_raw,spot_list,i,j,k,settings,I_mask=None):
+	# get rid of spots in masked out regions
+	if I_mask!=None:
+	spot_list = remove_spots_in_maskedRegions(spot_list,I_mask)
+	# extract spot statistics
+	spot_data_pd = extract_spot_data(I_background_removed,I_raw,spot_list,i,j,k,settings)
+	return spot_list, spot_data_pd
+
