@@ -19,7 +19,8 @@ if __name__ == '__main__':
   gcs_settings['gcs_token'] = gcs_token
 
   # dataset ID
-  bucket = 'gs://octopi-malaria-tanzania-2021-data'
+  bucket_source = 'gs://octopi-malaria-tanzania-2021-data'
+  bucket_destination = 'gs://octopi-malaria-data-processing'
   dataset_id = 'U3D_201910_2022-01-11_23-11-36.799392'
 
   # ROI definition
@@ -31,12 +32,13 @@ if __name__ == '__main__':
   settings['saving_file_format'] = 'bmp'
   settings['saving_location'] = 'local'
   settings['downsize_factor'] = 4
-  settings['spot_detection_threshold'] = 12
-
+  settings['spot_detection_threshold'] = 10
+  settings['bucket_source'] = bucket_source
+  settings['bucket_destination'] = bucket_destination
 
   # deterimine the size of the scan
   fs = gcsfs.GCSFileSystem(project=gcs_project,token=gcs_token)
-  json_file = fs.cat(bucket + '/' + dataset_id + '/acquisition parameters.json')
+  json_file = fs.cat(bucket_source + '/' + dataset_id + '/acquisition parameters.json')
   acquisition_parameters = json.loads(json_file)
 
   # regions to process + other settings
@@ -57,6 +59,6 @@ if __name__ == '__main__':
   parameters['crop_y1'] = 2900
 
   # processing
-  print('processing ' + dataset_id + ' in ' + bucket)
+  print('processing ' + dataset_id + ' in ' + bucket_source)
   with get_context("spawn").Pool(processes=4) as pool:
-    pool.map(partial(process_column,gcs_settings=gcs_settings,bucket=bucket,dataset_id=dataset_id,parameters=parameters,settings=settings),columns)
+    pool.map(partial(process_column,gcs_settings=gcs_settings,dataset_id=dataset_id,parameters=parameters,settings=settings),columns)
