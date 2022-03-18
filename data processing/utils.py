@@ -3,6 +3,7 @@ import cv2
 import cupy as cp # conda install -c conda-forge cupy==10.2
 import cupyx.scipy.ndimage
 from skimage.feature.blob import _prune_blobs
+import numpy as np
 
 def imread_gcsfs(fs,file_path):
 	img_bytes = fs.cat(file_path)
