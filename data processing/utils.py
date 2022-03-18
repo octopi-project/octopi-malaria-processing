@@ -4,6 +4,7 @@ import cupy as cp # conda install -c conda-forge cupy==10.2
 import cupyx.scipy.ndimage
 from skimage.feature.blob import _prune_blobs
 import numpy as np
+from scipy import signal
 
 def imread_gcsfs(fs,file_path):
 	img_bytes = fs.cat(file_path)
@@ -34,6 +35,11 @@ def remove_background(img_cpu, return_gpu_image=True):
 		return img_th_gpu
 	else:
 		return cp.asnumpy(img_th_gpu)
+
+def gaussian_kernel_1d(n, std, normalized=True):
+	if normalized:
+		return cp.asarray(signal.gaussian(n, std))/(np.sqrt(2 * np.pi)*std)
+	return cp.asarray(signal.gaussian(n, std))
 
 def detect_spots(I, thresh = 12):
 	# filters
