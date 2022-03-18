@@ -17,8 +17,7 @@ def resize_cp(ar,downsize_factor=4):
 	s_ar[:,:,2] = ar[:,:,2].reshape([int(ar.shape[0]/downsize_factor), int(downsize_factor), int(ar.shape[1]/downsize_factor), int(downsize_factor)]).mean(3).mean(1)
 	return s_ar
 
-def resize_image(I,downsize_factor=4):
-	I = cp.asarray(I)
+def resize_image_cp(I,downsize_factor=4):
 	I = I.astype('float')/255
 	I_resized = cp.copy(I)
 	I_resized = resize_cp(I_resized, downsize_factor)

@@ -30,6 +30,9 @@ if __name__ == '__main__':
   settings['spot_detection_downsize_factor'] = 4
   settings['saving_file_format'] = 'bmp'
   settings['saving_location'] = 'local'
+  settings['downsize_factor'] = 4
+  settings['spot_detection_threshold'] = 12
+
 
   # deterimine the size of the scan
   fs = gcsfs.GCSFileSystem(project=gcs_project,token=gcs_token)
