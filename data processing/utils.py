@@ -108,7 +108,7 @@ def highlight_spots(I,spot_list,contrast_boost=1.6):
 		add_bounding_box(I,int(s[0]),int(s[1]),int(s[2]))
 	return I
 
-def add_bounding_box(I,x,y,r,extension=2,color=[0,0,0.6]):
+def add_bounding_box(I,x,y,r,extension=2,color=[0.6,0,0]):
 	ny, nx, nc = I.shape
 	x_min = max(x - r - extension,0)
 	y_min = max(y - r - extension,0)
