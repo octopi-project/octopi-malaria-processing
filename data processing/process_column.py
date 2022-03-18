@@ -14,3 +14,7 @@ def process_column(j,gcs_settings,bucket,dataset_id,parameters):
       file_id = str(i) + '_' + str(j) + '_' + str(k)
       print('processing fov ' + file_id)
       I_fluorescence = imread_gcsfs(fs,bucket + '/' + dataset_id + '/0/' + file_id + '_' + 'Fluorescence_405_nm_Ex.bmp')
+      # crop image
+      I_fluorescence = I_fluorescence[ parameters['crop_y0']:parameters['crop_y1'], parameters['crop_x0']:parameters['crop_x1'], : ]
+      # remove background
+      I_fluorescence = remove_background(I_fluorescence,return_gpu_image=False)
