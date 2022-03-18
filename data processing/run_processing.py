@@ -35,6 +35,7 @@ if __name__ == '__main__':
   settings['spot_detection_threshold'] = 10
   settings['bucket_source'] = bucket_source
   settings['bucket_destination'] = bucket_destination
+  settings['save_spot_detection_visualization'] = True
 
   # deterimine the size of the scan
   fs = gcsfs.GCSFileSystem(project=gcs_project,token=gcs_token)
