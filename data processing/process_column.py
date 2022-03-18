@@ -19,4 +19,8 @@ def process_column(j,gcs_settings,bucket,dataset_id,parameters):
       # cv2.imwrite(str(i)+'_'+str(j)+'_'+str(k)+'fluorescence_raw.bmp',cv2.cvtColor(I_fluorescence,cv2.COLOR_RGB2BGR))
       # remove background
       I_fluorescence_bg_removed = remove_background(I_fluorescence,return_gpu_image=False)
-      cv2.imwrite(str(i)+'_'+str(j)+'_'+str(k)+'_fluorescence_background_removed.bmp',cv2.cvtColor(I_fluorescence_bg_removed,cv2.COLOR_RGB2BGR)
+      cv2.imwrite(str(i)+'_'+str(j)+'_'+str(k)+'_fluorescence_background_removed.bmp',cv2.cvtColor(I_fluorescence_bg_removed,cv2.COLOR_RGB2BGR))
+      # detect spots
+      spot_list = detect_spots(resize_image(I_fluorescence_bg_removed),downsize_factor=settings['spot_detection_downsize_factor'])
+      spot_list_pruned = prune_blobs(spot_list)
+      print(spot_list_pruned)

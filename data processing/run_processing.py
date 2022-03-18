@@ -26,11 +26,10 @@ if __name__ == '__main__':
   debug_mode = True
 
   # other settings
-  a = 2800
-  k = 0 # z plane
-  saving_file_format = 'bmp'
-  saving_location = 'local' 
-  # saving_location = 'cloud' 
+  settings = {}
+  settings['spot_detection_downsize_factor'] = 4
+  settings['saving_file_format'] = 'bmp'
+  settings['saving_location'] = 'local'
 
   # deterimine the size of the scan
   fs = gcsfs.GCSFileSystem(project=gcs_project,token=gcs_token)
