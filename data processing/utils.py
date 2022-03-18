@@ -99,3 +99,23 @@ def prune_blobs(spots_list):
 	spots_list = np.hstack([spots_list[:,:-1], sigmas_of_peaks])
 	result_pruned = _prune_blobs(spots_list, overlap)
 	return result_pruned
+
+def highlight_spots(I,spot_list,contrast_boost=1.6):
+	# bgremoved_fluorescence_spotBoxed = np.copy(bgremoved_fluorescence)
+	I = I.astype('float')/255 # this copies the image
+	I = I*contrast_boost # enhance contrast
+	for s in spot_list:
+		add_bounding_box(I,int(s[0]),int(s[1]),int(s[2]))
+	return I
+
+def add_bounding_box(I,x,y,r,extension=2,color=[0,0,0.6]):
+	ny, nx, nc = I.shape
+	x_min = max(x - r - extension,0)
+	y_min = max(y - r - extension,0)
+	x_max = min(x + r + extension,nx-1)
+	y_max = min(y + r + extension,ny-1)
+	for i in range(3):
+		I[y_min,x_min:x_max+1,i] = color[i]
+		I[y_max,x_min:x_max+1,i] = color[i]
+		I[y_min:y_max+1,x_min,i] = color[i]
+		I[y_min:y_max+1,x_max,i] = color[i]
