@@ -24,4 +24,4 @@ def process_column(j,gcs_settings,bucket,dataset_id,parameters,settings):
       # detect spots
       spot_list = detect_spots(resize_image_cp(I_fluorescence_bg_removed,downsize_factor=settings['spot_detection_downsize_factor']),thresh=settings['spot_detection_threshold'])
       spot_list_pruned = prune_blobs(spot_list)
-      cv2.imwrite(str(i) + '_' + str(j) + '_' + str(k) + '_spot_detection_result' + '.' + settings['saving_file_format'],highlight_spots(I_fluorescence_bg_removed,spot_list_pruned*settings['spot_detection_downsize_factor']))
+      cv2.imwrite(str(i) + '_' + str(j) + '_' + str(k) + '_spot_detection_result' + '.' + settings['saving_file_format'],cv2.cvtColor(cp.asnumpy(255*highlight_spots(I_fluorescence_bg_removed,spot_list_pruned*settings['spot_detection_downsize_factor'])).astype('uint8'),cv2.COLOR_RGB2BGR))
