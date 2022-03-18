@@ -20,9 +20,10 @@ def resize_cp(ar,downsize_factor=4):
 	return s_ar
 
 def resize_image_cp(I,downsize_factor=4):
-	I = I.astype('float')/255
+	I = I.astype('float')
 	I_resized = cp.copy(I)
 	I_resized = resize_cp(I_resized, downsize_factor)
+	return(I_resized)
 
 def remove_background(img_cpu, return_gpu_image=True):
 	tophat = cv2.getStructuringElement(2, ksize=(17,17))

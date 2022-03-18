@@ -24,4 +24,3 @@ def process_column(j,gcs_settings,bucket,dataset_id,parameters,settings):
       # detect spots
       spot_list = detect_spots(resize_image_cp(I_fluorescence_bg_removed,downsize_factor=settings['spot_detection_downsize_factor']),thresh=settings['spot_detection_threshold'])
       spot_list_pruned = prune_blobs(spot_list)
-      print(spot_list_pruned)
