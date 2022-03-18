@@ -16,5 +16,7 @@ def process_column(j,gcs_settings,bucket,dataset_id,parameters):
       I_fluorescence = imread_gcsfs(fs,bucket + '/' + dataset_id + '/0/' + file_id + '_' + 'Fluorescence_405_nm_Ex.bmp')
       # crop image
       I_fluorescence = I_fluorescence[ parameters['crop_y0']:parameters['crop_y1'], parameters['crop_x0']:parameters['crop_x1'], : ]
+      # cv2.imwrite(str(i)+'_'+str(j)+'_'+str(k)+'fluorescence_raw.bmp',cv2.cvtColor(I_fluorescence,cv2.COLOR_RGB2BGR))
       # remove background
-      I_fluorescence = remove_background(I_fluorescence,return_gpu_image=False)
+      I_fluorescence_bg_removed = remove_background(I_fluorescence,return_gpu_image=False)
+      cv2.imwrite(str(i)+'_'+str(j)+'_'+str(k)+'_fluorescence_background_removed.bmp',cv2.cvtColor(I_fluorescence_bg_removed,cv2.COLOR_RGB2BGR)
