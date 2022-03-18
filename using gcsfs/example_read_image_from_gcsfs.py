@@ -5,7 +5,6 @@ import imageio
 import time
 
 # gcsfs
-print('------')
 fs = gcsfs.GCSFileSystem(project='soe-octopi',token='processing-20220215-keys.json')
 
 # list datasets
@@ -15,7 +14,6 @@ print('------')
 
 # access individual files
 filename = 'octopi-malaria-tanzania-2021-data/U3D_201910_2022-01-11_23-11-36.799392/0/9_12_0_BF_LED_matrix_low_NA.bmp'
-print(fs.ls(filename))
 
 time_elapsed = 0
 N = 5
@@ -28,11 +26,8 @@ for i in range(N):
 	time_elapsed = time_elapsed + (t1-t0)
 print('average read time is ' + str(time_elapsed/N))
 
-
 # cv2.imshow('',I)
 # cv2.waitKey(0)
-
-
 
 # multiprocessing: https://stackoverflow.com/questions/66283634/use-gcsfilesystem-with-multiprocessing
 

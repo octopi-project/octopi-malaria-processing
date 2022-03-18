@@ -1,6 +1,3 @@
-# gs://octopi-malaria-whole-slide/
-
-
 import gcsfs
 import zarr
 
