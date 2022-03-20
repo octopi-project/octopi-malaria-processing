@@ -15,7 +15,7 @@ parser.add_argument("data_id",nargs='?',help="input data id")
 args = parser.parse_args()
 
 if args.data_id != None:
-    dataset_id = data_id
+    dataset_id = args.data_id
 else:
     dataset_id = 'U3D_201910_2022-01-11_23-11-36.799392'
 
