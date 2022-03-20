@@ -24,7 +24,7 @@ if __name__ == '__main__':
   dataset_id = 'U3D_201910_2022-01-11_23-11-36.799392'
 
   # ROI definition
-  debug_mode = True
+  debug_mode = False
 
   # other settings
   settings = {}
@@ -61,5 +61,5 @@ if __name__ == '__main__':
 
   # processing
   print('processing ' + dataset_id + ' in ' + bucket_source)
-  with get_context("spawn").Pool(processes=4) as pool:
+  with get_context("spawn").Pool(processes=8) as pool:
     pool.map(partial(process_column,gcs_settings=gcs_settings,dataset_id=dataset_id,parameters=parameters,settings=settings),columns)
