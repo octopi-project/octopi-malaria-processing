@@ -153,12 +153,12 @@ def extract_spot_data(I_background_removed,I_raw,spot_list,i,j,k,settings,extens
 		cropped = I_background_removed[y_min:(y_max+1),x_min:(x_max+1),:]
 		cropped_raw = I_raw[y_min:(y_max+1),x_min:(x_max+1),:]
 		# extract spot data
-		B = cp.asnumpy(cp.sum(cropped[:,:,0]))
+		B = cp.asnumpy(cp.sum(cropped[:,:,2]))
 		G = cp.asnumpy(cp.sum(cropped[:,:,1]))
-		R = cp.asnumpy(cp.sum(cropped[:,:,2]))
-		B_max = cp.asnumpy(cp.max(cropped[:,:,0]))
+		R = cp.asnumpy(cp.sum(cropped[:,:,0]))
+		B_max = cp.asnumpy(cp.max(cropped[:,:,2]))
 		G_max = cp.asnumpy(cp.max(cropped[:,:,1]))
-		R_max = cp.asnumpy(cp.max(cropped[:,:,2]))
+		R_max = cp.asnumpy(cp.max(cropped[:,:,0]))
 		lap = laplace(cp.sum(cropped,2))
 		lap_total = cp.asnumpy(cp.sum(cp.abs(lap)))
 		lap_max = cp.asnumpy(cp.max(cp.abs(lap)))
