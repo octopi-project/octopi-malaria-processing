@@ -135,6 +135,7 @@ def remove_spots_in_masked_regions(spotList,mask):
 
 def extract_spot_data(I_background_removed,I_raw,spot_list,i,j,k,settings,extension=1):
 	downsize_factor=settings['spot_detection_downsize_factor']
+	extension = extension*downsize_factor
 	ny, nx, nc = I_background_removed.shape
 	I_background_removed = I_background_removed.astype('float')
 	I_raw = I_raw/255
@@ -146,10 +147,10 @@ def extract_spot_data(I_background_removed,I_raw,spot_list,i,j,k,settings,extens
 		x = int(s[0])
 		y = int(s[1])
 		r = s[2]
-		x_min = max(int((x - r - extension)*downsize_factor),0)
-		y_min = max(int((y - r - extension)*downsize_factor),0)
-		x_max = min(int((x + r + extension)*downsize_factor),nx-1)
-		y_max = min(int((y + r + extension)*downsize_factor),ny-1)
+		x_min = max(int((x - r - extension)),0)
+		y_min = max(int((y - r - extension)),0)
+		x_max = min(int((x + r + extension)),nx-1)
+		y_max = min(int((y + r + extension)),ny-1)
 		cropped = I_background_removed[y_min:(y_max+1),x_min:(x_max+1),:]
 		cropped_raw = I_raw[y_min:(y_max+1),x_min:(x_max+1),:]
 		# extract spot data

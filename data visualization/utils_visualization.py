@@ -21,7 +21,7 @@ def generate_dpc(I1,I2,use_gpu=False):
 		I_dpc = I_dpc + 0.5
 	return I_dpc
 
-def process_fov_for_spot_visualizations(I_fluorescence,I_dpc,spot_data,settings,parameters,dir_out,r=30,scale=5,image_format='jpeg'):
+def process_fov_for_spot_visualizations(I_fluorescence,I_dpc,spot_data,parameters,dir_out,r=30,scale=5,image_format='jpeg'):
 	# make I_dpc RGB
 	if(len(I_dpc.shape)<3):
 		I_dpc = np.dstack((I_dpc,I_dpc,I_dpc))
@@ -34,8 +34,8 @@ def process_fov_for_spot_visualizations(I_fluorescence,I_dpc,spot_data,settings,
 		# get coordinate
 		i = int(entry['FOV_row'])
 		j = int(entry['FOV_col'])
-		x = int(entry['x'])*settings['spot_detection_downsize_factor'] # to change upstream
-		y = int(entry['y'])*settings['spot_detection_downsize_factor'] # to change upstream
+		x = int(entry['x'])
+		y = int(entry['y'])
 		# create the arrays for cropped images
 		I_DPC_cropped = np.zeros((2*r+1,2*r+1,3), np.float)
 		I_fluorescence_cropped = np.zeros((2*r+1,2*r+1,3), np.float)

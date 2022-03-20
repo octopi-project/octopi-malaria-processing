@@ -25,6 +25,7 @@ def process_column(j,gcs_settings,dataset_id,parameters,settings):
       cv2.imwrite(str(i) + '_' + str(j) + '_' + str(k) + '_fluorescence_background_removed' + '.' + settings['saving_file_format'],cv2.cvtColor(cp.asnumpy(I_fluorescence_bg_removed),cv2.COLOR_RGB2BGR))
       # detect spots
       spot_list = detect_spots(resize_image_cp(I_fluorescence_bg_removed,downsize_factor=settings['spot_detection_downsize_factor']),thresh=settings['spot_detection_threshold'])
+      spot_list = spot_list*settings['spot_detection_downsize_factor']
       if(len(spot_list)==0):
         return
       spot_list = prune_blobs(spot_list)
@@ -32,10 +33,9 @@ def process_column(j,gcs_settings,dataset_id,parameters,settings):
       spot_list, spot_data_pd = process_spots(I_fluorescence_bg_removed,I_fluorescence,spot_list,i,j,k,settings)
       # save image with spot boxed
       if settings['save_spot_detection_visualization']:
-        I_boxed = cv2.cvtColor(cp.asnumpy(255*highlight_spots(I_fluorescence_bg_removed,spot_list*settings['spot_detection_downsize_factor'])).astype('uint8'),cv2.COLOR_RGB2BGR)
+        I_boxed = cv2.cvtColor(cp.asnumpy(255*highlight_spots(I_fluorescence_bg_removed,spot_list)).astype('uint8'),cv2.COLOR_RGB2BGR)
         with fs.open( bucket_destination + '/' + dataset_id + '/' + 'spot_detection_result/' + file_id + '.jpg', 'wb' ) as f:
           f.write(cv2.imencode('.jpg',I_boxed)[1].tobytes())
-        # cv2.imwrite(str(i) + '_' + str(j) + '_' + str(k) + '_spot_detection_result' + '.' + settings['saving_file_format'],cv2.cvtColor(cp.asnumpy(255*highlight_spots(I_fluorescence_bg_removed,spot_list_pruned*settings['spot_detection_downsize_factor'])).astype('uint8'),cv2.COLOR_RGB2BGR))
       # save the spot list
       with fs.open( bucket_destination + '/' + dataset_id + '/' + 'spot_lists/' + file_id + '.csv', 'wb' ) as f:
         np.savetxt(f,spot_list,fmt=('%d','%d','%.1f'),delimiter=',')
