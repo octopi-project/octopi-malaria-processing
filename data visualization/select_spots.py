@@ -47,7 +47,7 @@ def accept(event):
         idx = selector.ind.tolist()
         spot_data_selected_pd = spot_data_pd.iloc[idx]
         print(spot_data_selected_pd)
-        spot_data_selected_pd.to_csv('spot_data_selected.csv')
+        spot_data_selected_pd.to_csv('spot_data_selected_' + dataset_id + '.csv')
         pickle.dump(selector.path,open('path_ROI.p','wb'))
         # selector.disconnect()
         ax.set_title('number of selected spots: ' + str(len(spot_data_selected_pd)) + '. Selection saved.')
