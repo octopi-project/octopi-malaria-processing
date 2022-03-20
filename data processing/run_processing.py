@@ -8,6 +8,7 @@ import multiprocessing as mp
 from utils import *
 from process_column import process_column
 from multiprocessing import get_context
+import FlowCal
 
 if __name__ == '__main__':
 
@@ -63,3 +64,30 @@ if __name__ == '__main__':
   print('processing ' + dataset_id + ' in ' + bucket_source)
   with get_context("spawn").Pool(processes=8) as pool:
     pool.map(partial(process_column,gcs_settings=gcs_settings,dataset_id=dataset_id,parameters=parameters,settings=settings),columns)
+
+  # pool spot data from all fovs
+  spot_data_pd = []
+  for i in range(parameters['row_start'],parameters['row_end']):
+    for j in range(parameters['column_start'],parameters['column_end']):
+      for k in range(parameters['z_start'],parameters['z_end']):
+        file_id = str(i) + '_' + str(j) + '_' + str(k):
+          if os.path.exists(file_id + '.csv'):
+            print(file_id)
+            spot_data_fov = pd.read_csv(file_id + '.csv', index_col=None, header=0)
+            spot_data_pd = pd.concat([spot_data_pd,spot_data_fov])
+  spot_data_pd.to_csv('spot_data_raw.csv',index=False)
+
+  # generate scatter plot
+  # moved spots with saturated pixels
+  idx_spot_with_saturated_pixels = spot_data_pd['numSaturatedPixels']>0
+  spot_data_pd = spot_data_pd[~idx_spot_with_saturated_pixels]
+  # get RGB
+  R = spot_data_pd['R'].to_numpy()
+  G = spot_data_pd['G'].to_numpy()
+  B = spot_data_pd['B'].to_numpy()
+  s = np.vstack((R/B,G/B)).T
+  FlowCal.plot.density2d(s, mode='scatter',xscale='linear',yscale='linear',xlim=[0,0.75],ylim=[0,1.5])
+  plt.xlabel("R/B")
+  plt.ylabel("G/B")
+  plt.savefig('scatter plot_raw.png')
+  print(R.size)
