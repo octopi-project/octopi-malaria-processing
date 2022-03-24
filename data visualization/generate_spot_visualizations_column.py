@@ -44,4 +44,7 @@ def process_column(j,spot_data_pd,gcs_settings,dataset_id,parameters,settings):
       I_DPC = generate_dpc(I_BF_left,I_BF_right)
       # cv2.imwrite('dpc.png',I_DPC)
       # generate_visualizations
-      process_fov_for_spot_visualizations(I_fluorescence,I_DPC,spot_data_current_fov,parameters,dir_out='test',r=30,scale=5,image_format='jpeg')
+      dir_out = 'spot from ROI_' + dataset_id
+      if not os.path.exists(dir_out):
+        os.mkdir(dir_out)
+      process_fov_for_spot_visualizations(I_fluorescence,I_DPC,spot_data_current_fov,parameters,dir_out=dir_out,r=30,scale=5,image_format='jpeg')
