@@ -80,45 +80,48 @@ def export_spot_images_from_fov(I_fluorescence,I_dpc,spot_data,parameters,settin
 				I_DPC = np.concatenate((I_DPC,I_DPC_cropped[np.newaxis,:]))
 		counter = counter + 1
 
-	# gcs
-	if settings['save to gcs']:
-		fs = gcsfs.GCSFileSystem(project=gcs_settings['gcs_project'],token=gcs_settings['gcs_token'])
-		dir_out = settings['bucket_destination'] + '/' + settings['dataset_id'] + '/' + 'spot_images_fov'
-
-	# convert to xarray
-	# data = xr.DataArray(I,coords={'c':['B','G','R','DPC']},dims=['t','y','x','c'])
-	data = xr.DataArray(I,dims=['t','y','x','c'])
-	data = data.expand_dims('z')
-	data = data.transpose('t','c','z','y','x')
-	data = (data*255).astype('uint8')
-	ds = xr.Dataset({'spot_images':data})
-	# ds.spot_images.data = (ds.spot_images.data*255).astype('uint8')
-	if settings['save to gcs']:
-		store = fs.get_mapper(dir_out + '/' + str(i) + '_' + str(j) + '.zarr')
+	if counter == 0:
+		print('no spot in this FOV')
 	else:
-		store = dir_out + '/' + str(i) + '_' + str(j) + '.zarr'
-	ds.to_zarr(store, mode='w')
+		# gcs
+		if settings['save to gcs']:
+			fs = gcsfs.GCSFileSystem(project=gcs_settings['gcs_project'],token=gcs_settings['gcs_token'])
+			dir_out = settings['bucket_destination'] + '/' + settings['dataset_id'] + '/' + 'spot_images_fov'
 
-	if generate_separate_images:
-		
-		data = xr.DataArray(I_DAPI,dims=['t','y','x','c'])
+		# convert to xarray
+		# data = xr.DataArray(I,coords={'c':['B','G','R','DPC']},dims=['t','y','x','c'])
+		data = xr.DataArray(I,dims=['t','y','x','c'])
 		data = data.expand_dims('z')
 		data = data.transpose('t','c','z','y','x')
 		data = (data*255).astype('uint8')
 		ds = xr.Dataset({'spot_images':data})
+		# ds.spot_images.data = (ds.spot_images.data*255).astype('uint8')
 		if settings['save to gcs']:
-			store = fs.get_mapper(dir_out + '/' + str(i) + '_' + str(j) + '_fluorescence.zarr')
+			store = fs.get_mapper(dir_out + '/' + str(i) + '_' + str(j) + '.zarr')
 		else:
-			store = dir_out + '/' + str(i) + '_' + str(j) + '_fluorescence.zarr'
+			store = dir_out + '/' + str(i) + '_' + str(j) + '.zarr'
 		ds.to_zarr(store, mode='w')
 
-		data = xr.DataArray(I_DPC,dims=['t','y','x'])
-		data = data.expand_dims(('z','c'))
-		data = data.transpose('t','c','z','y','x')
-		data = (data*255).astype('uint8')
-		ds = xr.Dataset({'spot_images':data})
-		if settings['save to gcs']:
-			store = fs.get_mapper(dir_out + '/' + str(i) + '_' + str(j) + '_DPC.zarr')
-		else:
-			store = dir_out + '/' + str(i) + '_' + str(j) + '_DPC.zarr'
-		ds.to_zarr(store, mode='w')
+		if generate_separate_images:
+			
+			data = xr.DataArray(I_DAPI,dims=['t','y','x','c'])
+			data = data.expand_dims('z')
+			data = data.transpose('t','c','z','y','x')
+			data = (data*255).astype('uint8')
+			ds = xr.Dataset({'spot_images':data})
+			if settings['save to gcs']:
+				store = fs.get_mapper(dir_out + '/' + str(i) + '_' + str(j) + '_fluorescence.zarr')
+			else:
+				store = dir_out + '/' + str(i) + '_' + str(j) + '_fluorescence.zarr'
+			ds.to_zarr(store, mode='w')
+
+			data = xr.DataArray(I_DPC,dims=['t','y','x'])
+			data = data.expand_dims(('z','c'))
+			data = data.transpose('t','c','z','y','x')
+			data = (data*255).astype('uint8')
+			ds = xr.Dataset({'spot_images':data})
+			if settings['save to gcs']:
+				store = fs.get_mapper(dir_out + '/' + str(i) + '_' + str(j) + '_DPC.zarr')
+			else:
+				store = dir_out + '/' + str(i) + '_' + str(j) + '_DPC.zarr'
+			ds.to_zarr(store, mode='w')
