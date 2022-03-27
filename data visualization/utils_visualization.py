@@ -19,6 +19,8 @@ def generate_dpc(I1,I2,use_gpu=False):
 	else:
 		I_dpc = np.divide(I1-I2,I1+I2)
 		I_dpc = I_dpc + 0.5
+		I_dpc[I_dpc<0] = 0
+		I_dpc[I_dpc>1] = 1
 	return I_dpc
 
 def process_fov_for_spot_visualizations(I_fluorescence,I_dpc,spot_data,parameters,dir_out,r=30,scale=5,image_format='jpeg'):

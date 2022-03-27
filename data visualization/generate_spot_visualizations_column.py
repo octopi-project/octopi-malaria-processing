@@ -42,7 +42,7 @@ def process_column(j,spot_data_pd,gcs_settings,dataset_id,parameters,settings):
       I_BF_right = I_BF_right[ parameters['crop_y0']:parameters['crop_y1'], parameters['crop_x0']:parameters['crop_x1']]
       # generate dpc
       I_DPC = generate_dpc(I_BF_left,I_BF_right)
-      # cv2.imwrite('dpc.png',I_DPC)
+      # cv2.imwrite('dpc_' + file_id + '.png',(I_DPC*255).astype('uint8'))
       # generate_visualizations
       dir_out = 'spot from ROI_' + dataset_id
       if not os.path.exists(dir_out):
