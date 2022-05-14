@@ -71,18 +71,25 @@ if __name__ == '__main__':
                     I_fluorescence = cv2.cvtColor(I_fluorescence,cv2.COLOR_RGB2BGR)
                     I_BF_left = imread_gcsfs(fs,bucket_source + '/' + dataset_id + '/0/' + file_id + '_' + 'BF_LED_matrix_left_half.bmp')
                     I_BF_right = imread_gcsfs(fs,bucket_source + '/' + dataset_id + '/0/' + file_id + '_' + 'BF_LED_matrix_right_half.bmp')
+                    I_Low_NA = imread_gcsfs(fs,bucket_source + '/' + dataset_id + '/0/' + file_id + '_' + 'BF_LED_matrix_low_NA.bmp')
+                    
                     # convert to mono if color
                     if len(I_BF_left.shape)==3:
                       I_BF_left = I_BF_left[:,:,1]
                       I_BF_right = I_BF_right[:,:,1]
+                      I_Low_NA = I_Low_NA[:,:,1]
                     # make images float and 0-1
                     I_fluorescence = I_fluorescence.astype('float')/255
                     I_BF_left = I_BF_left.astype('float')/255
                     I_BF_right = I_BF_right.astype('float')/255
+                    I_Low_NA = I_Low_NA.astype('float')/255
+
                     # crop image
                     I_fluorescence = I_fluorescence[ parameters['crop_y0']:parameters['crop_y1'], parameters['crop_x0']:parameters['crop_x1'], : ]
                     I_BF_left = I_BF_left[ parameters['crop_y0']:parameters['crop_y1'], parameters['crop_x0']:parameters['crop_x1']]
                     I_BF_right = I_BF_right[ parameters['crop_y0']:parameters['crop_y1'], parameters['crop_x0']:parameters['crop_x1']]
+                    I_Low_NA = I_Low_NA[ parameters['crop_y0']:parameters['crop_y1'], parameters['crop_x0']:parameters['crop_x1']]
+
                     # generate dpc
                     I_DPC = generate_dpc(I_BF_left,I_BF_right)
                     if(len(I_DPC.shape)<3):
@@ -92,5 +99,5 @@ if __name__ == '__main__':
 
                     cv2.imwrite(dir_out + '/' + str(i) + '_' + str(j) + '_overlay.' + image_format, I_overlay*255)
                     cv2.imwrite(dir_out + '/' + str(i) + '_' + str(j) + '_DPC.' + image_format, I_DPC*255)
-
+                    cv2.imwrite(dir_out + '/' + str(i) + '_' + str(j) + '_low NA.' + image_format, I_Low_NA*255)
 
