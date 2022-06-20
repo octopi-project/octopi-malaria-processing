@@ -104,14 +104,14 @@ if __name__ == '__main__':
                     I_BF_left = I_BF_left.astype('float')/255
                     I_BF_right = I_BF_right.astype('float')/255
 
-                    # enhance contrast
-                    I_fluorescence = I_fluorescence*1.4
-                    I_fluorescence[I_fluorescence>1] = 1
-
                     # illumination correction
                     I_fluorescence = I_fluorescence/flatfield_fluorescence
                     I_BF_left = I_BF_left/flatfield_left
                     I_BF_right = I_BF_right/flatfield_right
+
+                    # enhance contrast
+                    I_fluorescence = I_fluorescence*1.4
+                    I_fluorescence[I_fluorescence>1] = 1
                     
                     # crop image
                     I_fluorescence = I_fluorescence[ parameters['crop_y0']:parameters['crop_y1'], parameters['crop_x0']:parameters['crop_x1'], : ]
