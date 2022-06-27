@@ -104,6 +104,10 @@ def export_spot_images_from_fov(I_fluorescence,I_dpc,spot_data,parameters,settin
 			store = dir_out + '/' + str(i) + '_' + str(j) + '.zarr'
 		ds.to_zarr(store, mode='w')
 
+		# save per FOV spot data for mapping
+		spot_data = spot_data[['FOV_row','FOV_col','FOV_z','x','y','r','idx']]
+		spot_data.to_csv(dir_out + '/' + str(i) + '_' + str(j) + '.csv')
+
 		if generate_separate_images:
 			
 			data = xr.DataArray(I_DAPI,dims=['t','y','x','c'])
