@@ -102,6 +102,7 @@ def export_spot_images_from_fov(I_fluorescence,I_dpc,spot_data,parameters,settin
 			store = fs.get_mapper(dir_out + '/' + str(i) + '_' + str(j) + '.zarr')
 		else:
 			store = dir_out + '/' + str(i) + '_' + str(j) + '.zarr'
+		ds.spot_images.encoding = {'chunks': (1,1,1,61,61)}
 		ds.to_zarr(store, mode='w')
 
 		# save per FOV spot data for mapping
