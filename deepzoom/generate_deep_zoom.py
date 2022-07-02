@@ -25,7 +25,7 @@ gcs_settings = {}
 gcs_settings['gcs_project'] = gcs_project
 gcs_settings['gcs_token'] = gcs_token
 
-debug_mode = True
+debug_mode = False
 
 gcs_project = 'soe-octopi'
 gcs_token = 'data-20220317-keys.json'
@@ -74,7 +74,7 @@ if __name__ == '__main__':
         h = parameters['row_end'] - parameters['row_start']
 
         # output dir
-        dir_out = '/Users/hongquanli/Downloads/' + dataset_id
+        dir_out = 'output'
         if not os.path.exists(dir_out):
             os.mkdir(dir_out)
 
@@ -110,7 +110,7 @@ if __name__ == '__main__':
                     I_BF_right = I_BF_right/flatfield_right
 
                     # enhance contrast
-                    I_fluorescence = I_fluorescence*1.4
+                    I_fluorescence = I_fluorescence*1.25
                     I_fluorescence[I_fluorescence>1] = 1
                     
                     # crop image
@@ -153,6 +153,6 @@ if __name__ == '__main__':
         # vimg.write_to_file( dataset_id + '.tiff', tile=True, tile_width=1024, tile_height=1024,pyramid=True,compression='none')
         # https://www.libvips.org/API/current/VipsForeignSave.html#vips-dzsave
         dataset_id = ''.join(dataset_id.split('.')[:-1]) # get rid of fractional seconds
-        vimgs_fluorescence.dzsave(dataset_id+'_fluorescence',tile_size=1024,suffix='.jpg[Q=95]')
-        vimgs_DPC.dzsave(dataset_id+'_dpc',tile_size=1024,suffix='.jpg[Q=95]')
-        vimgs_overlay.dzsave(dataset_id+'_overlay',tile_size=1024,suffix='.jpg[Q=95]')
+        vimgs_fluorescence.dzsave(dir_out + '/' + dataset_id+'_fluorescence',tile_size=1024,suffix='.jpg[Q=95]')
+        vimgs_DPC.dzsave(dir_out + '/' + dataset_id+'_dpc',tile_size=1024,suffix='.jpg[Q=95]')
+        vimgs_overlay.dzsave(dir_out + '/' + dataset_id+'_overlay',tile_size=1024,suffix='.jpg[Q=95]')
