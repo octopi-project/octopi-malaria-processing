@@ -6,6 +6,14 @@ import os
 import json
 from utils import *
 
+correct_illumination = True
+if correct_illumination:
+	# load flatfield
+	flatfield_fluorescence = np.load('illumination correction/flatfield_fluorescence.npy')
+	flatfield_fluorescence = np.dstack((flatfield_fluorescence,flatfield_fluorescence,flatfield_fluorescence))
+	flatfield_left = np.load('illumination correction/flatfield_left.npy')
+	flatfield_right = np.load('illumination correction/flatfield_right.npy')
+
 if __name__ == '__main__':
 
     image_format = 'png'
@@ -16,7 +24,7 @@ if __name__ == '__main__':
     parameters['crop_y0'] = 100
     parameters['crop_y1'] = 2900
 
-    debug_mode = False
+    debug_mode = True
 
     write_to_gcs = False
     use_zip_store = True
@@ -60,10 +68,10 @@ if __name__ == '__main__':
         parameters['z_start'] = 0
         parameters['z_end'] = acquisition_parameters['Nz']
         if debug_mode:
-            parameters['row_end'] = 1
-            parameters['column_end'] = 1
+            parameters['row_end'] = 5
+            parameters['column_end'] = 5
 
-        dir_out = '/Users/hongquanli/Downloads/' + dataset_id
+        dir_out = './' + dataset_id
         if not os.path.exists(dir_out):
             os.mkdir(dir_out)
 
@@ -85,6 +93,11 @@ if __name__ == '__main__':
                     I_fluorescence = I_fluorescence.astype('float')/255
                     I_BF_left = I_BF_left.astype('float')/255
                     I_BF_right = I_BF_right.astype('float')/255
+                    if correct_illumination:
+                        # illumination correction
+                        I_fluorescence = I_fluorescence/flatfield_fluorescence
+                        I_BF_left = I_BF_left/flatfield_left
+                        I_BF_right = I_BF_right/flatfield_right
                     # crop image
                     I_fluorescence = I_fluorescence[ parameters['crop_y0']:parameters['crop_y1'], parameters['crop_x0']:parameters['crop_x1'], : ]
                     I_BF_left = I_BF_left[ parameters['crop_y0']:parameters['crop_y1'], parameters['crop_x0']:parameters['crop_x1']]
