@@ -102,12 +102,12 @@ if __name__ == '__main__':
                 if os.path.exists(dir_in + '/' + file_id + '.csv'):
                     mapping_fov = pd.read_csv(dir_in + '/' + file_id + '.csv', header=0,index_col=0)
                     mapping_pd = pd.concat([mapping_pd,mapping_fov])
-            if os.path.exists(dir_in + '/' + file_id + '.zarr'):
-                ds = xr.open_zarr(dir_in + '/' + file_id + '.zarr')
-                if counter == 0:
-                    data_all = ds.spot_images
-                else:
-                    data_all = xr.concat([data_all,ds.spot_images],dim='t')
+                if os.path.exists(dir_in + '/' + file_id + '.zarr'):
+                    ds = xr.open_zarr(dir_in + '/' + file_id + '.zarr')
+                    if counter == 0:
+                        data_all = ds.spot_images
+                    else:
+                        data_all = xr.concat([data_all,ds.spot_images],dim='t')
                 counter = counter + 1
         mapping_pd.reset_index(inplace=True)
         mapping_pd.rename(columns={'index':'global_index'},inplace=True)
