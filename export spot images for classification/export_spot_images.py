@@ -13,6 +13,8 @@ import multiprocessing as mp
 from multiprocessing import get_context
 from export_spot_images_column import process_column
 
+version = 1
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
@@ -23,7 +25,7 @@ if __name__ == '__main__':
     save_intermediate_to_gcs = False # spot saved to the local folder: spot images_DATASET ID
     combine_zarr = True
 
-    debug_mode = True
+    debug_mode = False
 
     if args.data_id != None:
         DATASET_ID = [args.data_id]
@@ -110,7 +112,7 @@ if __name__ == '__main__':
         mapping_pd.reset_index(inplace=True)
         mapping_pd.rename(columns={'index':'global_index'},inplace=True)
         mapping_pd.to_csv('mapping.csv')
-
+	
         # upload mapping
         print("upload mapping")
         with fs.open( bucket_destination + '/' + dataset_id + '/' + 'mapping.csv', 'wb' ) as f:
@@ -121,9 +123,9 @@ if __name__ == '__main__':
         ds_all = xr.Dataset({'spot_images':data_all})
         with zarr.ZipStore(dataset_id + '_spot_images.zip', mode='w') as store:
             ds_all.to_zarr(store, mode='w')
-        fs.put(dataset_id + '_spot_images.zip',bucket_destination + '/' + dataset_id + '/' + 'spot_images.zip')
+        fs.put(dataset_id + '_spot_images.zip',bucket_destination + '/' + dataset_id + '/version' + str(version) + '/spot_images.zip')
         os.remove(dataset_id + '_spot_images.zip')
             
         # remove intermidate result
         print("remove intermidiate files")
-        shutil.rmtree(dir_in)
+        shutil.rmtree(dir_in)        
