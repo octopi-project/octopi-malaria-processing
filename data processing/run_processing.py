@@ -23,9 +23,10 @@ if __name__ == '__main__':
   gcs_settings['gcs_token'] = gcs_token
 
   # dataset ID
-  bucket_source = 'gs://octopi-malaria-tanzania-2021-data'
-  bucket_destination = 'gs://octopi-malaria-data-processing'
-  dataset_id = 'U3D_201910_2022-01-11_23-11-36.799392'
+  # bucket_source = 'gs://octopi-malaria-tanzania-2021-data'
+  # bucket_destination = 'gs://octopi-malaria-data-processing'
+  bucket_source = 'gs://octopi-malaria-uganda-2022-data'
+  bucket_destination = 'gs://octopi-malaria-uganda-2022-data-processing'
 
   # ROI definition
   debug_mode = False
@@ -66,39 +67,47 @@ if __name__ == '__main__':
   parameters['crop_y0'] = 100
   parameters['crop_y1'] = 2900
 
-  # processing
-  print('processing ' + dataset_id + ' in ' + bucket_source)
-  with get_context("spawn").Pool(processes=8) as pool:
-    pool.map(partial(process_column,gcs_settings=gcs_settings,dataset_id=dataset_id,parameters=parameters,settings=settings),columns)
+  f = open('list of datasets.txt','r')
+  DATASET_ID = f.read()
+  DATASET_ID = DATASET_ID.split('\n')
+  f.close()
 
-  if pooling_and_plotting:
-    # pool spot data from all fovs
-    spot_data_pd = pd.DataFrame()
-    for i in range(parameters['row_start'],parameters['row_end']):
-      for j in range(parameters['column_start'],parameters['column_end']):
-        for k in range(parameters['z_start'],parameters['z_end']):
-          file_id = str(i) + '_' + str(j) + '_' + str(k)
-          if fs.exists(bucket_destination + '/' + dataset_id + '/' + 'spot_data/' + file_id + '.csv'):
-            with fs.open( bucket_destination + '/' + dataset_id + '/' + 'spot_data/' + file_id + '.csv', 'r' ) as f:
-              print(file_id)
-              spot_data_fov = pd.read_csv(f, index_col=None, header=0)
-              print(spot_data_fov)
-              spot_data_pd = pd.concat([spot_data_pd,spot_data_fov])
-    with fs.open( bucket_destination + '/' + dataset_id + '/' + 'spot_data_raw.csv', 'wb' ) as f:
-      spot_data_pd.to_csv(f,index=False)
+  # go through dataset
+  for dataset_id in DATASET_ID:
 
-    # generate scatter plot
-    # moved spots with saturated pixels
-    idx_spot_with_saturated_pixels = spot_data_pd['numSaturatedPixels']>0
-    spot_data_pd = spot_data_pd[~idx_spot_with_saturated_pixels]
-    # get RGB
-    R = spot_data_pd['R'].to_numpy()
-    G = spot_data_pd['G'].to_numpy()
-    B = spot_data_pd['B'].to_numpy()
-    s = np.vstack((R/B,G/B)).T
-    FlowCal.plot.density2d(s, mode='scatter',xscale='linear',yscale='linear',xlim=[0,0.75],ylim=[0,1.5])
-    plt.xlabel("R/B")
-    plt.ylabel("G/B")
-    with fs.open( bucket_destination + '/' + dataset_id + '/' + 'scatter plot_raw.png', 'wb' ) as f:
-      plt.savefig(f)
-    print(R.size)
+    # processing
+    print('processing ' + dataset_id + ' in ' + bucket_source)
+    with get_context("spawn").Pool(processes=8) as pool:
+      pool.map(partial(process_column,gcs_settings=gcs_settings,dataset_id=dataset_id,parameters=parameters,settings=settings),columns)
+
+    if pooling_and_plotting:
+      # pool spot data from all fovs
+      spot_data_pd = pd.DataFrame()
+      for i in range(parameters['row_start'],parameters['row_end']):
+        for j in range(parameters['column_start'],parameters['column_end']):
+          for k in range(parameters['z_start'],parameters['z_end']):
+            file_id = str(i) + '_' + str(j) + '_' + str(k)
+            if fs.exists(bucket_destination + '/' + dataset_id + '/' + 'spot_data/' + file_id + '.csv'):
+              with fs.open( bucket_destination + '/' + dataset_id + '/' + 'spot_data/' + file_id + '.csv', 'r' ) as f:
+                print(file_id)
+                spot_data_fov = pd.read_csv(f, index_col=None, header=0)
+                print(spot_data_fov)
+                spot_data_pd = pd.concat([spot_data_pd,spot_data_fov])
+      with fs.open( bucket_destination + '/' + dataset_id + '/' + 'spot_data_raw.csv', 'wb' ) as f:
+        spot_data_pd.to_csv(f,index=False)
+
+      # generate scatter plot
+      # moved spots with saturated pixels
+      idx_spot_with_saturated_pixels = spot_data_pd['numSaturatedPixels']>0
+      spot_data_pd = spot_data_pd[~idx_spot_with_saturated_pixels]
+      # get RGB
+      R = spot_data_pd['R'].to_numpy()
+      G = spot_data_pd['G'].to_numpy()
+      B = spot_data_pd['B'].to_numpy()
+      s = np.vstack((R/B,G/B)).T
+      FlowCal.plot.density2d(s, mode='scatter',xscale='linear',yscale='linear',xlim=[0,0.75],ylim=[0,1.5])
+      plt.xlabel("R/B")
+      plt.ylabel("G/B")
+      with fs.open( bucket_destination + '/' + dataset_id + '/' + 'scatter plot_raw.png', 'wb' ) as f:
+        plt.savefig(f)
+      print(R.size)
