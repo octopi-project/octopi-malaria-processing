@@ -17,7 +17,7 @@ if __name__ == '__main__':
 
   # gcs setting
   gcs_project = 'soe-octopi'
-  gcs_token = 'data-20220317-keys.json'
+  gcs_token = 'uganda-2022-p-keys.json'
   gcs_settings = {}
   gcs_settings['gcs_project'] = gcs_project
   gcs_settings['gcs_token'] = gcs_token
@@ -47,33 +47,34 @@ if __name__ == '__main__':
 
   # deterimine the size of the scan
   fs = gcsfs.GCSFileSystem(project=gcs_project,token=gcs_token)
-  json_file = fs.cat(bucket_source + '/' + dataset_id + '/acquisition parameters.json')
-  acquisition_parameters = json.loads(json_file)
 
-  # regions to process + other settings
-  parameters = {}
-  parameters['row_start'] = 0
-  parameters['row_end'] = acquisition_parameters['Ny']
-  parameters['column_start'] = 0
-  parameters['column_end'] = acquisition_parameters['Nx']
-  parameters['z_start'] = 0
-  parameters['z_end'] = acquisition_parameters['Nz']
-  if debug_mode:
-    parameters['row_end'] = 2
-    parameters['column_end'] = 2
-  columns = range(parameters['column_start'], parameters['column_end'])
-  parameters['crop_x0'] = 100
-  parameters['crop_x1'] = 2900
-  parameters['crop_y0'] = 100
-  parameters['crop_y1'] = 2900
-
-  f = open('list of datasets.txt','r')
+  f = open('list_of_datasets_uganda_2022.txt','r')
   DATASET_ID = f.read()
   DATASET_ID = DATASET_ID.split('\n')
   f.close()
 
   # go through dataset
   for dataset_id in DATASET_ID:
+  
+    json_file = fs.cat(bucket_source + '/' + dataset_id + '/acquisition parameters.json')
+    acquisition_parameters = json.loads(json_file)
+
+    # regions to process + other settings
+    parameters = {}
+    parameters['row_start'] = 0
+    parameters['row_end'] = acquisition_parameters['Ny']
+    parameters['column_start'] = 0
+    parameters['column_end'] = acquisition_parameters['Nx']
+    parameters['z_start'] = 0
+    parameters['z_end'] = acquisition_parameters['Nz']
+    if debug_mode:
+      parameters['row_end'] = 2
+      parameters['column_end'] = 2
+    columns = range(parameters['column_start'], parameters['column_end'])
+    parameters['crop_x0'] = 100
+    parameters['crop_x1'] = 2900
+    parameters['crop_y0'] = 100
+    parameters['crop_y1'] = 2900
 
     # processing
     print('processing ' + dataset_id + ' in ' + bucket_source)
