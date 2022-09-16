@@ -26,6 +26,7 @@ if __name__ == '__main__':
     combine_zarr = True
 
     debug_mode = False
+    save_locally = False
 
     if args.data_id != None:
         DATASET_ID = [args.data_id]
@@ -114,17 +115,20 @@ if __name__ == '__main__':
         mapping_pd.to_csv('mapping.csv')
 	
         # upload mapping
-        print("upload mapping")
-        with fs.open( bucket_destination + '/' + dataset_id + '/' + 'mapping.csv', 'wb' ) as f:
-          spot_data_pd.to_csv(f,index=False)
+        if save_locally == False:
+            print("upload mapping")
+            with fs.open( bucket_destination + '/' + dataset_id + '/' + 'mapping.csv', 'wb' ) as f:
+              mapping_pd.to_csv(f,index=False)
 
-        # upload spot images
-        print("upload spot images")
+        # save all spot images into a zip store
         ds_all = xr.Dataset({'spot_images':data_all})
         with zarr.ZipStore(dataset_id + '_spot_images.zip', mode='w') as store:
             ds_all.to_zarr(store, mode='w')
-        fs.put(dataset_id + '_spot_images.zip',bucket_destination + '/' + dataset_id + '/version' + str(version) + '/spot_images.zip')
-        os.remove(dataset_id + '_spot_images.zip')
+
+        if save_locally == False:
+            print("upload spot images")
+            fs.put(dataset_id + '_spot_images.zip',bucket_destination + '/' + dataset_id + '/version' + str(version) + '/spot_images.zip')
+            os.remove(dataset_id + '_spot_images.zip')
             
         # remove intermidate result
         print("remove intermidiate files")
