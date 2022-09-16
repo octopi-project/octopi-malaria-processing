@@ -7,8 +7,8 @@ import os
 
 if __name__ == '__main__':
 
-    write_to_gcs = True
-    use_zip_store = True
+    version = 1
+    read_from_gcs = True
 
     gcs_project = 'soe-octopi'
     gcs_token = 'data-20220317-keys.json'
@@ -18,7 +18,7 @@ if __name__ == '__main__':
 
     bucket_destination = 'gs://octopi-malaria-data-processing'
 
-    if write_to_gcs or read_from_gcs:
+    if read_from_gcs:
         fs = gcsfs.GCSFileSystem(project=gcs_settings['gcs_project'],token=gcs_settings['gcs_token'])
 
     parser = argparse.ArgumentParser()
@@ -35,4 +35,4 @@ if __name__ == '__main__':
 
     for dataset_id in DATASET_ID:
         print('downloading spot images for ' + dataset_id)
-        fs.get(bucket_destination + '/' + dataset_id + '/' + 'spot_images.zip',dataset_id + '_spot_images.zip')
+        fs.get(bucket_destination + '/' + dataset_id + '/version' + str(version) + '/spot_images.zip',dataset_id + '_spot_images.zip')
