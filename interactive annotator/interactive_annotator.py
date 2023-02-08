@@ -8,6 +8,7 @@ import os
 import numpy as np
 import pandas as pd
 import cv2
+from sklearn.neighbors import KNeighborsClassifier
 
 def generate_overlay(image):
     images_fluorescence = image[:,2::-1,:,:]
@@ -17,7 +18,7 @@ def generate_overlay(image):
     images_overlay = 0.64*images_fluorescence + 0.36*images_dpc
     images = images_overlay.transpose(0,2,3,1)
     # frame = np.hstack([img_dpc,img_fluorescence,img_overlay]).astype('uint8')
-    print(images.shape)
+    # print(images.shape)
     return images
 
 class CustomWidget(QWidget):
@@ -100,7 +101,7 @@ class TableWidget(QTableWidget):
                 new_height, new_width = int(image.shape[0] * scale_factor), int(image.shape[1] * scale_factor)
                 image = cv2.resize(image,(new_width, new_height),interpolation=cv2.INTER_NEAREST)
                 # image = np.random.randint(0, 255, size=(128, 128, 3), dtype=np.uint8)
-                print(image.shape)
+                # print(image.shape)
                 text = texts[idx]
                 qimage = QImage(image.data, image.shape[1], image.shape[0], QImage.Format_RGB888)
                 lb = CustomWidget(text, qimage)
@@ -111,15 +112,33 @@ class TableWidget(QTableWidget):
         self.setFixedHeight(self.num_rows*self.rowHeight(0)+80)
         # self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
 
+    def get_selected_cells(self):
+        list_of_selected_cells = []
+        for index in self.selectedIndexes():
+             # list_of_selected_cells.append((index.row(),index.column()))
+             list_of_selected_cells.append( index.row()*self.num_cols + index.column() )
+        return(list_of_selected_cells)
+
     @pyqtSlot(int, int)
     def onCellClicked(self, row, column):
         w = self.cellWidget(row, column)
         print(w.text)
 
+###########################################################################################
+#####################################  Gallery View  ######################################
+###########################################################################################
+
 class GalleryViewWidget(QFrame):
-    def __init__(self, rows = 10, columns = 10, dataHandler=None, parent=None,*args, **kwargs):
+
+    signal_switchTab = pyqtSignal()
+    signal_similaritySearch = pyqtSignal(np.ndarray,np.ndarray,np.ndarray,np.ndarray)
+
+    def __init__(self, rows = 10, columns = 10, dataHandler=None, is_main_gallery=False, parent=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.dataHandler = dataHandler
+        self.is_main_gallery = is_main_gallery
+        self.image_id = None # for storing the ID of currently displayed images
+
         self.tableWidget = TableWidget(rows,columns,parent=self)
 
         self.slider = QSlider(Qt.Horizontal)
@@ -131,12 +150,16 @@ class GalleryViewWidget(QFrame):
         self.entry = QSpinBox()
         self.entry.setMinimum(0) 
         self.entry.setValue(0)
-        
+
+        self.btn_search = QPushButton('Search Similar Images')
+
         vbox = QVBoxLayout()
         vbox.addWidget(self.tableWidget)
         grid = QGridLayout()
         grid.addWidget(self.entry,0,0)
         grid.addWidget(self.slider,0,1)
+        if self.is_main_gallery:
+            grid.addWidget(self.btn_search,2,0,2,2)
         vbox.addLayout(grid)
         self.setLayout(vbox)
         
@@ -144,11 +167,12 @@ class GalleryViewWidget(QFrame):
         self.entry.valueChanged.connect(self.slider.setValue)
         self.slider.valueChanged.connect(self.entry.setValue)
         self.entry.valueChanged.connect(self.update_page)
+        self.btn_search.clicked.connect(self.do_similarity_search)
 
     def update_page(self):
         # self.tableWidget.populate_simulate(None,None)
         if self.dataHandler is not None:
-            images,texts = self.dataHandler.get_page(self.entry.value())
+            images,texts,self.image_id = self.dataHandler.get_page(self.entry.value())
             self.tableWidget.populate(images,texts)
         else:
             self.tableWidget.populate_simulate(None,None)
@@ -156,12 +180,43 @@ class GalleryViewWidget(QFrame):
     def set_total_pages(self,n):
         self.slider.setMaximum(n-1)
         self.entry.setMaximum(n-1) 
+        self.slider.setTickInterval(int(np.ceil(n/10)))
 
     def populate_page0(self):
         self.update_page()
 
+    def do_similarity_search(self):
+        selected_images = self.tableWidget.get_selected_cells()
+        # ensure only one image is selected
+        if len(selected_images) != 1:
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Information)
+            msg.setText("No image or more than one images selected. Please select one image.")
+            msg.exec_()
+            return
+        # check if embedding has been loaded
+        if self.dataHandler.embeddings_loaded != True:
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Information)
+            msg.setText("Load the embeddings first.")
+            msg.exec_()
+            return
+        # convert to global id
+        selected_image = self.image_id[selected_images[0]]
+        # find similar images
+        k = 200
+        print( 'finding ' + str(k) + ' images similar to ' + str(selected_image) )
+        images, indices, scores, distances = self.dataHandler.find_similar_images(selected_image,k)
+        # emit the results
+        self.signal_similaritySearch.emit(images,indices,scores,distances)
+        self.signal_switchTab.emit()
+
+###########################################################################################
+##################################  Data Loader Widget  ###################################
+###########################################################################################
 
 class DataLoaderWidget(QFrame):
+
     def __init__(self, dataHandler, main=None, *args, **kwargs):
             super().__init__(*args, **kwargs)
             self.dataHandler = dataHandler
@@ -223,13 +278,18 @@ class DataLoaderWidget(QFrame):
                 self.lineEdit_embeddings.setText(filename)
                 self.dataHandler.load_embeddings(filename)
 
+###########################################################################################
+#####################################  Data Handaler  #####################################
+###########################################################################################
+
 class DataHandler(QObject):
 
     signal_populate_page0 = pyqtSignal()
     signal_set_total_page_count = pyqtSignal(int)
 
-    def __init__(self):
+    def __init__(self,is_for_similarity_search=False):
         QObject.__init__(self)
+        self.is_for_similarity_search = is_for_similarity_search
         self.images = None
         self.output_pd = None
         self.embeddings = None
@@ -274,6 +334,8 @@ class DataHandler(QObject):
     def load_embeddings(self,path):
         self.embeddings = np.load(path)
         self.embeddings_loaded = True
+        self.neigh = KNeighborsClassifier(metric='cosine')
+        self.neigh.fit(self.embeddings, np.zeros(self.embeddings.shape[0]))
 
     def set_number_of_images_per_page(self,n):
         self.n_images_per_page = n
@@ -286,10 +348,40 @@ class DataHandler(QObject):
         idx_end = min(self.n_images_per_page*(page_number+1),self.images.shape[0])
         images = generate_overlay(self.images[self.spot_idx_sorted[idx_start:idx_end],:,:,:])
         texts = []
+        image_id = []
         for i in range(idx_start,idx_end):
             # texts.append( '[' + str(i) + ']  ' + str(self.output_pd.iloc[i]['index']) + ': ' + "{:.2f}".format(self.output_pd.iloc[i]['output']))
-            texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.output_pd.iloc[i]['output']))
-        return images, texts
+            if self.is_for_similarity_search:
+                texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.output_pd.iloc[i]['scores']) + '\n{:.1e}'.format(self.output_pd.iloc[i]['distances'])) # .at would use the idx before sorting # + '{:.1e}'.format(self.output_pd.iloc[i]['distances'])
+
+            else:
+                texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.output_pd.iloc[i]['output'])) # .at would use the idx before sorting
+            image_id.append(int(self.output_pd.iloc[i]['index']))
+        return images, texts, image_id
+
+    def find_similar_images(self,idx,k=200):
+        self.neigh.set_params(n_neighbors=k+1)
+        distances, indices = self.neigh.kneighbors(self.embeddings[idx,].reshape(1, -1), return_distance=True)
+        distances = distances.squeeze()
+        indices = indices.squeeze()
+        images = self.images[indices,]
+        scores = self.output_pd.loc[indices]['output'].to_numpy() # use the presorting idx
+        return images[1:,], indices[1:], scores[1:], distances[1:]
+
+    def populate_similarity_search(self,images,indices,scores,distances):
+        self.images = images
+        self.output_pd = pd.DataFrame({'index':indices, 'scores':scores, 'distances':distances})
+        # print(self.output_pd)
+        self.images_loaded = True
+        self.output_loaded = True
+        # self.spot_idx_sorted = self.output_pd['index'].to_numpy().astype(int)
+        self.spot_idx_sorted = np.arange(self.images.shape[0]).astype(int)
+        self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
+        self.signal_populate_page0.emit()
+
+###########################################################################################
+#####################################  Main Window  #######################################
+###########################################################################################
 
 class MainWindow(QMainWindow):
     def __init__(self, *args, **kwargs):
@@ -298,17 +390,31 @@ class MainWindow(QMainWindow):
         num_rows = 6
         num_cols = 10
 
+        # on mac
+        # num_rows = 2
+        # num_cols = 4
+
         # core
         self.dataHandler = DataHandler()
         self.dataHandler.set_number_of_images_per_page(num_rows*num_cols)
 
+        self.dataHandler_similarity = DataHandler(is_for_similarity_search=True)
+        self.dataHandler_similarity.set_number_of_images_per_page(num_rows*num_cols)
+
         # widgets
         self.dataLoaderWidget = DataLoaderWidget(self.dataHandler)
-        self.gallery = GalleryViewWidget(num_rows,num_cols,self.dataHandler)
+        self.gallery = GalleryViewWidget(num_rows,num_cols,self.dataHandler,is_main_gallery=True)
+        self.gallery_similarity = GalleryViewWidget(num_rows,num_cols,self.dataHandler_similarity)
+
+        # tab widget
+        self.gallery_tab = QTabWidget()
+        self.gallery_tab.addTab(self.gallery,'Full Dataset')
+        self.gallery_tab.addTab(self.gallery_similarity,'Similarity Search')
 
         layout = QVBoxLayout()
         layout.addWidget(self.dataLoaderWidget)
-        layout.addWidget(self.gallery)
+        # layout.addWidget(self.gallery)
+        layout.addWidget(self.gallery_tab)
 
         self.centralWidget = QWidget()
         self.centralWidget.setLayout(layout)
@@ -316,12 +422,24 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.centralWidget)
 
         # connect
-        self.dataHandler.signal_populate_page0.connect(self.gallery.populate_page0)
         self.dataHandler.signal_set_total_page_count.connect(self.gallery.set_total_pages)
+        self.dataHandler.signal_populate_page0.connect(self.gallery.populate_page0)
+        
+        self.dataHandler_similarity.signal_set_total_page_count.connect(self.gallery_similarity.set_total_pages)
+        self.dataHandler_similarity.signal_populate_page0.connect(self.gallery_similarity.populate_page0)
+
+        self.gallery.signal_similaritySearch.connect(self.dataHandler_similarity.populate_similarity_search)
+        self.gallery.signal_switchTab.connect(self.switch_tab)
+
+    def switch_tab(self):
+        self.gallery_tab.setCurrentIndex(1)
 
     def closeEvent(self, event):
         event.accept()
 
+###########################################################################################
+#####################################  The Program  #######################################
+###########################################################################################
 if __name__ == '__main__':
     import sys
     app = QApplication(sys.argv)
