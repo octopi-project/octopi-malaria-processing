@@ -7,6 +7,18 @@ from PyQt5 import QtCore
 import os
 import numpy as np
 import pandas as pd
+import cv2
+
+def generate_overlay(image):
+    images_fluorescence = image[:,2::-1,:,:]
+    images_dpc = image[:,3,:,:]
+    images_dpc = np.expand_dims(images_dpc, axis=1)
+    images_dpc = np.repeat(images_dpc, 3, axis=1) # make it rgb
+    images_overlay = 0.64*images_fluorescence + 0.36*images_dpc
+    images = images_overlay.transpose(0,2,3,1)
+    # frame = np.hstack([img_dpc,img_fluorescence,img_overlay]).astype('uint8')
+    print(images.shape)
+    return images
 
 class CustomWidget(QWidget):
     def __init__(self, text, img, parent=None):
@@ -27,8 +39,8 @@ class CustomWidget(QWidget):
 
     def initUi(self):
         # self.lbPixmap.setPixmap(QPixmap.fromImage(self._img).scaled(self.lbPixmap.size(),Qt.KeepAspectRatio))
-        self.lbPixmap.setScaledContents(True)
         self.lbPixmap.setPixmap(QPixmap.fromImage(self._img))
+        self.lbPixmap.setScaledContents(True)
         self.lbText.setText(self._text)
 
     @pyqtProperty(str)
@@ -57,11 +69,12 @@ class TableWidget(QTableWidget):
     def __init__(self, rows = 20, columns = 10, parent=None):
         QTableWidget.__init__(self, parent)
         self.parent = parent
+        self.num_cols = columns
         self.setColumnCount(columns)
         self.setRowCount(rows)        
         self.cellClicked.connect(self.onCellClicked)
 
-    def populate(self, images, texts):
+    def populate_simulate(self, images, texts):
         for i in range(self.rowCount()):
             for j in range(self.columnCount()):
                 random_image = np.random.randint(0, 255, size=(256, 256, 3), dtype=np.uint8)
@@ -74,14 +87,38 @@ class TableWidget(QTableWidget):
         self.setFixedWidth(self.horizontalHeader().length()+80)
         self.setFixedHeight(5*self.rowHeight(0)+40)
 
+    def populate(self, images, texts):
+        for i in range(self.rowCount()):
+            for j in range(self.columnCount()):
+                idx = i*self.num_cols + j
+                if idx >= images.shape[0]:
+                    break
+                image = images[idx,].astype(np.uint8)
+                # resize
+                scale_factor = 8
+                new_height, new_width = int(image.shape[0] * scale_factor), int(image.shape[1] * scale_factor)
+                image = cv2.resize(image,(new_width, new_height),interpolation=cv2.INTER_NEAREST)
+                # image = np.random.randint(0, 255, size=(128, 128, 3), dtype=np.uint8)
+                print(image.shape)
+                text = texts[idx]
+                qimage = QImage(image.data, image.shape[1], image.shape[0], QImage.Format_RGB888)
+                lb = CustomWidget(text, qimage)
+                self.setCellWidget(i, j, lb)
+        self.resizeColumnsToContents()
+        self.resizeRowsToContents()
+        self.setFixedWidth(self.horizontalHeader().length()+80)
+        self.setFixedHeight(5*self.rowHeight(0)+40)
+        # self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+
     @pyqtSlot(int, int)
     def onCellClicked(self, row, column):
         w = self.cellWidget(row, column)
-        print(w.text, w.img)
+        print(w.text)
 
 class GalleryViewWidget(QFrame):
-    def __init__(self, rows = 10, columns = 10, parent=None,*args, **kwargs):
+    def __init__(self, rows = 10, columns = 10, dataHandler=None, parent=None,*args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.dataHandler = dataHandler
         self.tableWidget = TableWidget(rows,columns,parent=self)
 
         self.slider = QSlider(Qt.Horizontal)
@@ -101,8 +138,6 @@ class GalleryViewWidget(QFrame):
         grid.addWidget(self.slider,0,1)
         vbox.addLayout(grid)
         self.setLayout(vbox)
-
-        # self.tableWidget.populate(None,None)
         
         # connections
         self.entry.valueChanged.connect(self.slider.setValue)
@@ -110,14 +145,19 @@ class GalleryViewWidget(QFrame):
         self.entry.valueChanged.connect(self.update_page)
 
     def update_page(self):
-        self.tableWidget.populate(None,None)
+        # self.tableWidget.populate_simulate(None,None)
+        if self.dataHandler is not None:
+            images,texts = self.dataHandler.get_page(self.entry.value())
+            self.tableWidget.populate(images,texts)
+        else:
+            self.tableWidget.populate_simulate(None,None)
 
     def set_total_pages(self,n):
-        self.slider.setMaximum(n)
-        self.entry.setMaximum(n) 
+        self.slider.setMaximum(n-1)
+        self.entry.setMaximum(n-1) 
 
     def populate_page0(self):
-        self.tableWidget.populate(None,None)
+        self.update_page()
 
 
 class DataLoaderWidget(QFrame):
@@ -219,6 +259,8 @@ class DataHandler(QObject):
                 print('! dimension mismatch')
                 return 1
 
+        self.output_pd = self.output_pd.sort_values('output',ascending=False)
+
         self.output_loaded = True
         if self.images_loaded & self.output_loaded == True:
             self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
@@ -233,8 +275,16 @@ class DataHandler(QObject):
         self.n_images_per_page = n
 
     def get_number_of_rows(self):
-        return self.images.shape[0] 
+        return self.images.shape[0]
 
+    def get_page(self,page_number):
+        idx_start = self.n_images_per_page*page_number
+        idx_end = min(self.n_images_per_page*(page_number+1),self.images.shape[0])
+        images = generate_overlay(self.images[idx_start:idx_end,:,:,:])
+        texts = []
+        for i in range(idx_start,idx_end):
+            texts.append( '[' + str(i) + ']  ' + str(self.output_pd.iloc[i]['index']) + ': ' + "{:.2f}".format(self.output_pd.iloc[i]['output']))
+        return images, texts
 
 class MainWindow(QMainWindow):
     def __init__(self, *args, **kwargs):
@@ -249,7 +299,7 @@ class MainWindow(QMainWindow):
 
         # widgets
         self.dataLoaderWidget = DataLoaderWidget(self.dataHandler)
-        self.gallery = GalleryViewWidget(num_rows,num_cols)
+        self.gallery = GalleryViewWidget(num_rows,num_cols,self.dataHandler)
 
         layout = QVBoxLayout()
         layout.addWidget(self.dataLoaderWidget)
