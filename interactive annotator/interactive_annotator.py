@@ -66,10 +66,11 @@ class CustomWidget(QWidget):
         self.initUi()
 
 class TableWidget(QTableWidget):
-    def __init__(self, rows = 20, columns = 10, parent=None):
+    def __init__(self, rows = 10, columns = 10, parent=None):
         QTableWidget.__init__(self, parent)
         self.parent = parent
         self.num_cols = columns
+        self.num_rows = rows
         self.setColumnCount(columns)
         self.setRowCount(rows)        
         self.cellClicked.connect(self.onCellClicked)
@@ -85,7 +86,7 @@ class TableWidget(QTableWidget):
         self.resizeRowsToContents()
         # self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.setFixedWidth(self.horizontalHeader().length()+80)
-        self.setFixedHeight(5*self.rowHeight(0)+40)
+        self.setFixedHeight(5*self.rowHeight(0)+80)
 
     def populate(self, images, texts):
         for i in range(self.rowCount()):
@@ -107,7 +108,7 @@ class TableWidget(QTableWidget):
         self.resizeColumnsToContents()
         self.resizeRowsToContents()
         self.setFixedWidth(self.horizontalHeader().length()+80)
-        self.setFixedHeight(5*self.rowHeight(0)+40)
+        self.setFixedHeight(self.num_rows*self.rowHeight(0)+80)
         # self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
 
     @pyqtSlot(int, int)
@@ -236,6 +237,7 @@ class DataHandler(QObject):
         self.output_loaded = False
         self.embeddings_loaded = False
         self.n_images_per_page = None
+        self.spot_idx_sorted = None
 
     def load_images(self,path):
         self.images = np.load(path)
@@ -259,7 +261,9 @@ class DataHandler(QObject):
                 print('! dimension mismatch')
                 return 1
 
+        # sort the output
         self.output_pd = self.output_pd.sort_values('output',ascending=False)
+        self.spot_idx_sorted = self.output_pd['index'].to_numpy().astype(int)
 
         self.output_loaded = True
         if self.images_loaded & self.output_loaded == True:
@@ -280,17 +284,18 @@ class DataHandler(QObject):
     def get_page(self,page_number):
         idx_start = self.n_images_per_page*page_number
         idx_end = min(self.n_images_per_page*(page_number+1),self.images.shape[0])
-        images = generate_overlay(self.images[idx_start:idx_end,:,:,:])
+        images = generate_overlay(self.images[self.spot_idx_sorted[idx_start:idx_end],:,:,:])
         texts = []
         for i in range(idx_start,idx_end):
-            texts.append( '[' + str(i) + ']  ' + str(self.output_pd.iloc[i]['index']) + ': ' + "{:.2f}".format(self.output_pd.iloc[i]['output']))
+            # texts.append( '[' + str(i) + ']  ' + str(self.output_pd.iloc[i]['index']) + ': ' + "{:.2f}".format(self.output_pd.iloc[i]['output']))
+            texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.output_pd.iloc[i]['output']))
         return images, texts
 
 class MainWindow(QMainWindow):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        num_rows = 20
+        num_rows = 6
         num_cols = 10
 
         # core
