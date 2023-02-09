@@ -8,7 +8,38 @@ import os
 import numpy as np
 import pandas as pd
 import cv2
+import glob
+import torch
 from sklearn.neighbors import KNeighborsClassifier
+import models
+import utils
+
+##########################################################
+################  Default configurations  ################
+##########################################################
+num_rows = 6
+num_cols = 10
+model_spec = {'model':'resnet18','n_channels':4,'n_filters':64,'n_classes':1,'kernel_size':3,'stride':1,'padding':1}
+batch_size_inference = 2048
+KNN_METRIC = 'cosine'
+
+# on mac
+# num_rows = 2
+# num_cols = 4
+
+##########################################################
+#### start of loading machine specific configurations ####
+##########################################################
+config_files = glob.glob('.' + '/' + 'configurations*.txt')
+if config_files:
+    if len(config_files) > 1:
+        print('multiple configuration files found, the program will exit')
+        exit()
+    exec(open(config_files[0]).read())
+##########################################################
+##### end of loading machine specific configurations #####
+##########################################################
+
 
 def generate_overlay(image):
     images_fluorescence = image[:,2::-1,:,:]
@@ -222,34 +253,34 @@ class DataLoaderWidget(QFrame):
             self.dataHandler = dataHandler
             self.setFrameStyle(QFrame.Panel | QFrame.Raised)
             # create widgets
+            self.button_load_model = QPushButton('Load Model')
             self.button_load_images = QPushButton('Load Images')
-            self.button_load_predictions = QPushButton('Load Predictions')
-            self.button_load_embeddings = QPushButton('Load Embeddings')
+            self.button_load_annotations = QPushButton('Load Annotations')
+            self.button_load_model.setIcon(QIcon('icon/folder.png'))
             self.button_load_images.setIcon(QIcon('icon/folder.png'))
-            self.button_load_predictions.setIcon(QIcon('icon/folder.png'))
-            self.button_load_embeddings.setIcon(QIcon('icon/folder.png'))
+            self.button_load_annotations.setIcon(QIcon('icon/folder.png'))
             self.lineEdit_images = QLineEdit()
             self.lineEdit_images.setText('click the button to load')
             self.lineEdit_images.setReadOnly(True)
-            self.lineEdit_predictions = QLineEdit()
-            self.lineEdit_predictions.setText('click the button to load')
-            self.lineEdit_predictions.setReadOnly(True)
-            self.lineEdit_embeddings = QLineEdit()
-            self.lineEdit_embeddings.setText('click the button to load')
-            self.lineEdit_embeddings.setReadOnly(True)
+            self.lineEdit_annotations = QLineEdit()
+            self.lineEdit_annotations.setText('click the button to load')
+            self.lineEdit_annotations.setReadOnly(True)
+            self.lineEdit_model = QLineEdit()
+            self.lineEdit_model.setText('click the button to load')
+            self.lineEdit_model.setReadOnly(True)
             # layout
             layout = QGridLayout()
-            layout.addWidget(self.button_load_images,0,0)
-            layout.addWidget(self.button_load_predictions,1,0)
-            layout.addWidget(self.button_load_embeddings,2,0)
-            layout.addWidget(self.lineEdit_images,0,1)
-            layout.addWidget(self.lineEdit_predictions,1,1)
-            layout.addWidget(self.lineEdit_embeddings,2,1)
+            layout.addWidget(self.button_load_images,1,0)
+            layout.addWidget(self.button_load_annotations,2,0)
+            layout.addWidget(self.button_load_model,0,0)
+            layout.addWidget(self.lineEdit_images,1,1)
+            layout.addWidget(self.lineEdit_annotations,2,1)
+            layout.addWidget(self.lineEdit_model,0,1)
             self.setLayout(layout)
             # connect
             self.button_load_images.clicked.connect(self.load_images)
-            self.button_load_predictions.clicked.connect(self.load_predictions)
-            self.button_load_embeddings.clicked.connect(self.load_embeddings)
+            self.button_load_annotations.clicked.connect(self.load_annotations)
+            self.button_load_model.clicked.connect(self.load_model)
 
     def load_images(self):
         dialog = QFileDialog()
@@ -260,23 +291,23 @@ class DataLoaderWidget(QFrame):
                 if self.dataHandler.load_images(filename) == 0:
                     self.lineEdit_images.setText(filename)
 
-    def load_predictions(self):
+    def load_annotations(self):
         dialog = QFileDialog()
         filename, _filter = dialog.getOpenFileName(None,'Open File','.','csv files (*.csv)')
         if filename:
             self.config_filename = filename
             if(os.path.isfile(filename)==True):
                 if self.dataHandler.load_output(filename) == 0:
-                    self.lineEdit_predictions.setText(filename)
+                    self.lineEdit_annotations.setText(filename)
 
-    def load_embeddings(self):
+    def load_model(self):
         dialog = QFileDialog()
-        filename, _filter = dialog.getOpenFileName(None,'Open File','.','npy files (*.npy)')
+        filename, _filter = dialog.getOpenFileName(None,'Open File','.','model (*.pt)')
         if filename:
             self.config_filename = filename
             if(os.path.isfile(filename)==True):
-                self.lineEdit_embeddings.setText(filename)
-                self.dataHandler.load_embeddings(filename)
+                self.lineEdit_model.setText(filename)
+                self.dataHandler.load_model(filename)
 
 ###########################################################################################
 #####################################  Data Handaler  #####################################
@@ -293,50 +324,61 @@ class DataHandler(QObject):
         self.images = None
         self.output_pd = None
         self.embeddings = None
+        self.model_loaded = False
         self.images_loaded = False
-        self.output_loaded = False
         self.embeddings_loaded = False
+        self.annotations_loaded = False
         self.n_images_per_page = None
         self.spot_idx_sorted = None
+
+    def load_model(self,path):
+        self.model = models.ResNet(model=model_spec['model'],n_channels=model_spec['n_channels'],n_filters=model_spec['n_filters'],
+            n_classes=model_spec['n_classes'],kernel_size=model_spec['kernel_size'],stride=model_spec['stride'],padding=model_spec['padding'])
+        self.model.load_state_dict(torch.load(path))
+        self.model_loaded = True 
 
     def load_images(self,path):
         self.images = np.load(path)
         
-        if self.output_loaded:
+        if self.annotations_loaded:
             if self.images.shape[0] != self.output_pd.shape[0]:
                 print('! dimension mismatch')
                 return 1
 
         self.images_loaded = True
-        if self.images_loaded & self.output_loaded == True:
+        if self.images_loaded & self.model_loaded == True:
+            self.run_model()
             self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
             self.signal_populate_page0.emit()
         return 0
 
-    def load_output(self,path):
-        self.output_pd = pd.read_csv(path)
+    def run_model(self):
+        predictions, features = utils.generate_predictions_and_features(self.model,self.images,batch_size_inference)
+        self.output_pd = pd.DataFrame({'index':np.arange(self.images.shape[0]),'output':predictions[:,0]})
         
-        if self.images_loaded:
-            if self.images.shape[0] != self.output_pd.shape[0]:
-                print('! dimension mismatch')
-                return 1
-
-        # sort the output
+        # sort the predictions
         self.output_pd = self.output_pd.sort_values('output',ascending=False)
         self.spot_idx_sorted = self.output_pd['index'].to_numpy().astype(int)
+        
+        self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
+        self.signal_populate_page0.emit()
 
-        self.output_loaded = True
-        if self.images_loaded & self.output_loaded == True:
-            self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
-            self.signal_populate_page0.emit()
-        return 0
-
-    def load_embeddings(self,path):
-        self.embeddings = np.load(path)
+        # embeddings
+        self.embeddings = features
         self.embeddings_loaded = True
-        self.neigh = KNeighborsClassifier(metric='cosine')
+        self.neigh = KNeighborsClassifier(metric=KNN_METRIC)
         self.neigh.fit(self.embeddings, np.zeros(self.embeddings.shape[0]))
 
+    def load_annotations(self,path):
+        self.annotations_pd = pd.read_csv(path)
+        if self.images_loaded:
+            if self.images.shape[0] != self.annotations_pd.shape[0]:
+                print('! dimension mismatch')
+                return 1
+        # sort the annotations
+        annotations_pd = annotations_pd.sort_values('annotation',ascending=False)        
+        return 0
+        
     def set_number_of_images_per_page(self,n):
         self.n_images_per_page = n
 
@@ -373,7 +415,6 @@ class DataHandler(QObject):
         self.output_pd = pd.DataFrame({'index':indices, 'scores':scores, 'distances':distances})
         # print(self.output_pd)
         self.images_loaded = True
-        self.output_loaded = True
         # self.spot_idx_sorted = self.output_pd['index'].to_numpy().astype(int)
         self.spot_idx_sorted = np.arange(self.images.shape[0]).astype(int)
         self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
@@ -386,13 +427,6 @@ class DataHandler(QObject):
 class MainWindow(QMainWindow):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
-        num_rows = 6
-        num_cols = 10
-
-        # on mac
-        # num_rows = 2
-        # num_cols = 4
 
         # core
         self.dataHandler = DataHandler()
