@@ -125,18 +125,19 @@ class TableWidget(QTableWidget):
             for j in range(self.columnCount()):
                 idx = i*self.num_cols + j
                 if idx >= images.shape[0]:
-                    break
-                image = images[idx,].astype(np.uint8)
-                # resize
-                scale_factor = 8
-                new_height, new_width = int(image.shape[0] * scale_factor), int(image.shape[1] * scale_factor)
-                image = cv2.resize(image,(new_width, new_height),interpolation=cv2.INTER_NEAREST)
-                # image = np.random.randint(0, 255, size=(128, 128, 3), dtype=np.uint8)
-                # print(image.shape)
-                text = texts[idx]
-                qimage = QImage(image.data, image.shape[1], image.shape[0], QImage.Format_RGB888)
-                lb = CustomWidget(text, qimage)
-                self.setCellWidget(i, j, lb)
+                    self.setCellWidget(i, j, None)
+                else:
+                    image = images[idx,].astype(np.uint8)
+                    # resize
+                    scale_factor = 8
+                    new_height, new_width = int(image.shape[0] * scale_factor), int(image.shape[1] * scale_factor)
+                    image = cv2.resize(image,(new_width, new_height),interpolation=cv2.INTER_NEAREST)
+                    # image = np.random.randint(0, 255, size=(128, 128, 3), dtype=np.uint8)
+                    # print(image.shape)
+                    text = texts[idx]
+                    qimage = QImage(image.data, image.shape[1], image.shape[0], QImage.Format_RGB888)
+                    lb = CustomWidget(text, qimage)
+                    self.setCellWidget(i, j, lb)
         self.resizeColumnsToContents()
         self.resizeRowsToContents()
         self.setFixedWidth(self.horizontalHeader().length()+80)
