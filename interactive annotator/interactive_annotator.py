@@ -165,9 +165,10 @@ class GalleryViewWidget(QFrame):
     signal_switchTab = pyqtSignal()
     signal_similaritySearch = pyqtSignal(np.ndarray,np.ndarray,np.ndarray,np.ndarray)
 
-    def __init__(self, rows = 10, columns = 10, dataHandler=None, is_main_gallery=False, parent=None, *args, **kwargs):
+    def __init__(self, rows = 10, columns = 10, dataHandler=None, dataHandler2=None, is_main_gallery=False, parent=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.dataHandler = dataHandler
+        self.dataHandler2 = dataHandler2 # secondary datahandler (in the similarity search gallery, this is linked to the full data)
         self.is_main_gallery = is_main_gallery
         self.image_id = None # for storing the ID of currently displayed images
 
@@ -190,8 +191,8 @@ class GalleryViewWidget(QFrame):
         grid = QGridLayout()
         grid.addWidget(self.entry,0,0)
         grid.addWidget(self.slider,0,1)
-        if self.is_main_gallery:
-            grid.addWidget(self.btn_search,2,0,2,2)
+        # if self.is_main_gallery:
+        grid.addWidget(self.btn_search,2,0,2,2)
         vbox.addLayout(grid)
         self.setLayout(vbox)
         
@@ -226,6 +227,7 @@ class GalleryViewWidget(QFrame):
             msg.setText("No image or more than one images selected. Please select one image.")
             msg.exec_()
             return
+        '''
         # check if embedding has been loaded
         if self.dataHandler.embeddings_loaded != True:
             msg = QMessageBox()
@@ -233,12 +235,16 @@ class GalleryViewWidget(QFrame):
             msg.setText("Load the embeddings first.")
             msg.exec_()
             return
+        '''
         # convert to global id
         selected_image = self.image_id[selected_images[0]]
         # find similar images
         k = 200
         print( 'finding ' + str(k) + ' images similar to ' + str(selected_image) )
-        images, indices, scores, distances = self.dataHandler.find_similar_images(selected_image,k)
+        if self.is_main_gallery:
+            images, indices, scores, distances = self.dataHandler.find_similar_images(selected_image,k)
+        else:
+            images, indices, scores, distances = self.dataHandler2.find_similar_images(selected_image,k)
         # emit the results
         self.signal_similaritySearch.emit(images,indices,scores,distances)
         self.signal_switchTab.emit()
@@ -439,7 +445,7 @@ class MainWindow(QMainWindow):
         # widgets
         self.dataLoaderWidget = DataLoaderWidget(self.dataHandler)
         self.gallery = GalleryViewWidget(num_rows,num_cols,self.dataHandler,is_main_gallery=True)
-        self.gallery_similarity = GalleryViewWidget(num_rows,num_cols,self.dataHandler_similarity)
+        self.gallery_similarity = GalleryViewWidget(num_rows,num_cols,self.dataHandler_similarity,dataHandler2=self.dataHandler)
 
         # tab widget
         self.gallery_tab = QTabWidget()
@@ -465,6 +471,8 @@ class MainWindow(QMainWindow):
 
         self.gallery.signal_similaritySearch.connect(self.dataHandler_similarity.populate_similarity_search)
         self.gallery.signal_switchTab.connect(self.switch_tab)
+
+        self.gallery_similarity.signal_similaritySearch.connect(self.dataHandler_similarity.populate_similarity_search)
 
     def switch_tab(self):
         self.gallery_tab.setCurrentIndex(1)
