@@ -216,6 +216,7 @@ class GalleryViewWidget(QFrame):
         self.slider.setTickInterval(int(np.ceil(n/10)))
 
     def populate_page0(self):
+        self.entry.setValue(0)
         self.update_page()
 
     def do_similarity_search(self):
