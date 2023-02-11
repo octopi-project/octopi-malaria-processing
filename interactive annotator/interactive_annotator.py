@@ -18,7 +18,9 @@ import utils
 ################  Default configurations  ################
 ##########################################################
 num_rows = 6
+MAX_NUM_ROWS_DISPLAYED_PER_PAGE = 6
 num_cols = 10
+SCALE_FACTOR = 8
 model_spec = {'model':'resnet18','n_channels':4,'n_filters':64,'n_classes':1,'kernel_size':3,'stride':1,'padding':1}
 batch_size_inference = 2048
 KNN_METRIC = 'cosine'
@@ -129,7 +131,7 @@ class TableWidget(QTableWidget):
                 else:
                     image = images[idx,].astype(np.uint8)
                     # resize
-                    scale_factor = 8
+                    scale_factor = SCALE_FACTOR
                     new_height, new_width = int(image.shape[0] * scale_factor), int(image.shape[1] * scale_factor)
                     image = cv2.resize(image,(new_width, new_height),interpolation=cv2.INTER_NEAREST)
                     # image = np.random.randint(0, 255, size=(128, 128, 3), dtype=np.uint8)
@@ -141,7 +143,7 @@ class TableWidget(QTableWidget):
         self.resizeColumnsToContents()
         self.resizeRowsToContents()
         self.setFixedWidth(self.horizontalHeader().length()+80)
-        self.setFixedHeight(self.num_rows*self.rowHeight(0)+80)
+        self.setFixedHeight(min(self.num_rows,MAX_NUM_ROWS_DISPLAYED_PER_PAGE)*self.rowHeight(0)+80)
         # self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
 
     def get_selected_cells(self):
