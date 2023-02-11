@@ -5,6 +5,7 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5 import QtCore
 import os
+from datetime import datetime
 import numpy as np
 import pandas as pd
 import cv2
@@ -24,6 +25,7 @@ SCALE_FACTOR = 8
 model_spec = {'model':'resnet18','n_channels':4,'n_filters':64,'n_classes':1,'kernel_size':3,'stride':1,'padding':1}
 batch_size_inference = 2048
 KNN_METRIC = 'cosine'
+COLOR_DICT = {0:QColor(150,200,250),1:QColor(250,200,200),9:QColor(250,250,200)} # 0: nonparasites, 1: parasites, 9: not sure
 
 # on mac
 # num_rows = 2
@@ -122,7 +124,7 @@ class TableWidget(QTableWidget):
         self.setFixedWidth(self.horizontalHeader().length()+80)
         self.setFixedHeight(5*self.rowHeight(0)+80)
 
-    def populate(self, images, texts):
+    def populate(self, images, texts, annotations):
         for i in range(self.rowCount()):
             for j in range(self.columnCount()):
                 idx = i*self.num_cols + j
@@ -140,6 +142,16 @@ class TableWidget(QTableWidget):
                     qimage = QImage(image.data, image.shape[1], image.shape[0], QImage.Format_RGB888)
                     lb = CustomWidget(text, qimage)
                     self.setCellWidget(i, j, lb)
+                    # set color according to annotation
+                    if annotations[idx] != -1:
+                        self.setItem(i, j, QTableWidgetItem())
+                        self.item(i,j).setBackground(COLOR_DICT[annotations[idx]])
+                    else:
+                        # clear background - to improve the code
+                        self.setItem(i, j, QTableWidgetItem())
+                        palette = self.palette()
+                        default_color = palette.color(QPalette.Window)
+                        self.item(i,j).setBackground(default_color)
         self.resizeColumnsToContents()
         self.resizeRowsToContents()
         self.setFixedWidth(self.horizontalHeader().length()+80)
@@ -207,8 +219,8 @@ class GalleryViewWidget(QFrame):
     def update_page(self):
         # self.tableWidget.populate_simulate(None,None)
         if self.dataHandler is not None:
-            images,texts,self.image_id = self.dataHandler.get_page(self.entry.value())
-            self.tableWidget.populate(images,texts)
+            images,texts,self.image_id,annotations = self.dataHandler.get_page(self.entry.value())
+            self.tableWidget.populate(images,texts,annotations)
         else:
             self.tableWidget.populate_simulate(None,None)
 
@@ -245,9 +257,9 @@ class GalleryViewWidget(QFrame):
         k = 200
         print( 'finding ' + str(k) + ' images similar to ' + str(selected_image) )
         if self.is_main_gallery:
-            images, indices, scores, distances = self.dataHandler.find_similar_images(selected_image,k)
+            images, indices, scores, distances, annotations = self.dataHandler.find_similar_images(selected_image,k)
         else:
-            images, indices, scores, distances = self.dataHandler2.find_similar_images(selected_image,k)
+            images, indices, scores, distances, annotations = self.dataHandler2.find_similar_images(selected_image,k)
         # emit the results
         self.signal_similaritySearch.emit(images,indices,scores,distances)
         self.signal_switchTab.emit()
@@ -307,7 +319,7 @@ class DataLoaderWidget(QFrame):
         if filename:
             self.config_filename = filename
             if(os.path.isfile(filename)==True):
-                if self.dataHandler.load_output(filename) == 0:
+                if self.dataHandler.load_annotations(filename) == 0:
                     self.lineEdit_annotations.setText(filename)
 
     def load_model(self):
@@ -332,7 +344,9 @@ class DataHandler(QObject):
         QObject.__init__(self)
         self.is_for_similarity_search = is_for_similarity_search
         self.images = None
-        self.output_pd = None
+        self.image_path = None
+        self.data_pd = None
+        self.data_pd = None # annotation + prediction score + index
         self.embeddings = None
         self.model_loaded = False
         self.images_loaded = False
@@ -348,30 +362,49 @@ class DataHandler(QObject):
             self.model.load_state_dict(torch.load(path))
         else:
             self.model.load_state_dict(torch.load(path,map_location=torch.device('cpu')))
-        self.model_loaded = True 
+        self.model_loaded = True
+        # if the images are already loaded, run the model
+        if self.images_loaded:
+            self.run_mode()
+            self.signal_populate_page0.emit()
 
     def load_images(self,path):
+
         self.images = np.load(path)
+        self.image_path = path
         
         if self.annotations_loaded:
-            if self.images.shape[0] != self.output_pd.shape[0]:
+            if self.images.shape[0] != self.data_pd.shape[0]:
                 print('! dimension mismatch')
                 return 1
+        else:
+            self.data_pd = pd.DataFrame({'index':np.arange(self.images.shape[0]),'annotation':-1})
+            self.data_pd.set_index('index')
+            # print(self.data_pd)
 
         self.images_loaded = True
-        if self.images_loaded & self.model_loaded == True:
+        
+        # run the model if the model has been loaded
+        if self.model_loaded == True:
             self.run_model()
-            self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
-            self.signal_populate_page0.emit()
+
+        # display the images
+        self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
+        self.signal_populate_page0.emit()
+        
         return 0
 
     def run_model(self):
         predictions, features = utils.generate_predictions_and_features(self.model,self.images,batch_size_inference)
-        self.output_pd = pd.DataFrame({'index':np.arange(self.images.shape[0]),'output':predictions[:,0]})
+        output_pd = pd.DataFrame({'index':np.arange(self.images.shape[0]),'output':predictions[:,0]})
+        if 'output' in self.data_pd:
+            self.data_pd = self.data_pd.drop(columns=['output'])
+        self.data_pd = self.data_pd.merge(output_pd,on='index')
+        print(self.data_pd)
         
         # sort the predictions
-        self.output_pd = self.output_pd.sort_values('output',ascending=False)
-        self.spot_idx_sorted = self.output_pd['index'].to_numpy().astype(int)
+        self.data_pd = self.data_pd.sort_values('output',ascending=False)
+        self.spot_idx_sorted = self.data_pd['index'].to_numpy().astype(int)
         
         self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
         self.signal_populate_page0.emit()
@@ -383,13 +416,30 @@ class DataHandler(QObject):
         self.neigh.fit(self.embeddings, np.zeros(self.embeddings.shape[0]))
 
     def load_annotations(self,path):
-        self.annotations_pd = pd.read_csv(path)
+        # load the annotation
+        if self.data_pd is not None:
+            annotation_pd = pd.read_csv(path,index_col='index')
+            self.data_pd = self.data_pd.drop(columns=['annotation'])
+            self.data_pd = self.data_pd.merge(annotation_pd,on='index')
+            self.signal_populate_page0.emit() # update the display
+        else:
+            self.data_pd = pd.read_csv(path)
+
+        # size match check
         if self.images_loaded:
-            if self.images.shape[0] != self.annotations_pd.shape[0]:
+            if self.images.shape[0] != self.data_pd.shape[0]:
                 print('! dimension mismatch')
                 return 1
+
         # sort the annotations
-        annotations_pd = annotations_pd.sort_values('annotation',ascending=False)        
+        self.data_pd = self.data_pd.sort_values('annotation',ascending=False)
+        self.spot_idx_sorted = self.data_pd['index'].to_numpy().astype(int)
+        self.annotations_loaded = True
+        
+        # update the display if images have been loaded already
+        if self.images_loaded:
+            self.signal_populate_page0.emit()
+        
         return 0
         
     def set_number_of_images_per_page(self,n):
@@ -404,15 +454,17 @@ class DataHandler(QObject):
         images = generate_overlay(self.images[self.spot_idx_sorted[idx_start:idx_end],:,:,:])
         texts = []
         image_id = []
+        annotations = []
         for i in range(idx_start,idx_end):
-            # texts.append( '[' + str(i) + ']  ' + str(self.output_pd.iloc[i]['index']) + ': ' + "{:.2f}".format(self.output_pd.iloc[i]['output']))
+            # texts.append( '[' + str(i) + ']  ' + str(self.data_pd.iloc[i]['index']) + ': ' + "{:.2f}".format(self.data_pd.iloc[i]['output']))
             if self.is_for_similarity_search:
-                texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.output_pd.iloc[i]['scores']) + '\n{:.1e}'.format(self.output_pd.iloc[i]['distances'])) # .at would use the idx before sorting # + '{:.1e}'.format(self.output_pd.iloc[i]['distances'])
+                texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.data_pd.iloc[i]['scores']) + '\n{:.1e}'.format(self.data_pd.iloc[i]['distances'])) # .at would use the idx before sorting # + '{:.1e}'.format(self.data_pd.iloc[i]['distances'])
 
             else:
-                texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.output_pd.iloc[i]['output'])) # .at would use the idx before sorting
-            image_id.append(int(self.output_pd.iloc[i]['index']))
-        return images, texts, image_id
+                texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.data_pd.iloc[i]['output'])) # .at would use the idx before sorting
+            image_id.append(int(self.data_pd.iloc[i]['index']))
+            annotations.append(int(self.data_pd.iloc[i]['annotation']))
+        return images, texts, image_id, annotations
 
     def find_similar_images(self,idx,k=200):
         self.neigh.set_params(n_neighbors=k+1)
@@ -420,18 +472,37 @@ class DataHandler(QObject):
         distances = distances.squeeze()
         indices = indices.squeeze()
         images = self.images[indices,]
-        scores = self.output_pd.loc[indices]['output'].to_numpy() # use the presorting idx
-        return images[1:,], indices[1:], scores[1:], distances[1:]
+        scores = self.data_pd.loc[indices]['output'].to_numpy() # use the presorting idx
+        annotations = self.data_pd.loc[indices]['annotation'].to_numpy() # use the presorting idx
+        return images[1:,], indices[1:], scores[1:], distances[1:], annotations[1:]
 
     def populate_similarity_search(self,images,indices,scores,distances):
         self.images = images
-        self.output_pd = pd.DataFrame({'index':indices, 'scores':scores, 'distances':distances})
-        # print(self.output_pd)
+        self.data_pd = pd.DataFrame({'index':indices, 'scores':scores, 'distances':distances, 'annotation':annotations})
+        # print(self.data_pd)
         self.images_loaded = True
-        # self.spot_idx_sorted = self.output_pd['index'].to_numpy().astype(int)
+        # self.spot_idx_sorted = self.data_pd['index'].to_numpy().astype(int)
         self.spot_idx_sorted = np.arange(self.images.shape[0]).astype(int)
         self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
         self.signal_populate_page0.emit()
+
+    def update_annotation(self,index,annotation):
+        # condition = df['index'].isin(index), df.loc[condition, 'annotation'] = annotation 
+        # to-do: support dealing with multiple datasets using multi-level indexing
+        self.data_pd.loc[index,'annotation'] = annotation
+
+    def save_annotations(self):
+        if self.image_path:
+            # remove the prediction score
+            if 'output' in self.data_pd.columns:
+                self.data_pd = self.data_pd.drop(columns=['output'])
+            # save the annotations
+            current_time = datetime.now().strftime('%Y-%m-%d_%H-%M')
+            self.data_pd.to_csv(os.path.splitext(self.image_path)[0] + '_annotations_' + str(sum(self.data_pd['annotation']!=-1)) + '_' + str(self.data_pd.shape[0])  + '_' + current_time + '.csv')
+            # remove the temporary file
+            tmp_file = os.path.dirname(self.image_path)+'_tmp.csv'
+            if os.path.exists(tmp_file):
+                os.remove(tmp_file)
 
 ###########################################################################################
 #####################################  Main Window  #######################################
@@ -484,6 +555,7 @@ class MainWindow(QMainWindow):
         self.gallery_tab.setCurrentIndex(1)
 
     def closeEvent(self, event):
+        self.dataHandler.save_annotations()
         event.accept()
 
 ###########################################################################################
