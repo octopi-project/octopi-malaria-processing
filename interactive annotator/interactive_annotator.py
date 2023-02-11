@@ -177,7 +177,7 @@ class TableWidget(QTableWidget):
 class GalleryViewWidget(QFrame):
 
     signal_switchTab = pyqtSignal()
-    signal_similaritySearch = pyqtSignal(np.ndarray,np.ndarray,np.ndarray,np.ndarray)
+    signal_similaritySearch = pyqtSignal(np.ndarray,np.ndarray,np.ndarray,np.ndarray,np.ndarray)
 
     def __init__(self, rows = 10, columns = 10, dataHandler=None, dataHandler2=None, is_main_gallery=False, parent=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -261,7 +261,7 @@ class GalleryViewWidget(QFrame):
         else:
             images, indices, scores, distances, annotations = self.dataHandler2.find_similar_images(selected_image,k)
         # emit the results
-        self.signal_similaritySearch.emit(images,indices,scores,distances)
+        self.signal_similaritySearch.emit(images,indices,scores,distances,annotations)
         self.signal_switchTab.emit()
 
 ###########################################################################################
@@ -476,7 +476,7 @@ class DataHandler(QObject):
         annotations = self.data_pd.loc[indices]['annotation'].to_numpy() # use the presorting idx
         return images[1:,], indices[1:], scores[1:], distances[1:], annotations[1:]
 
-    def populate_similarity_search(self,images,indices,scores,distances):
+    def populate_similarity_search(self,images,indices,scores,distances,annotations):
         self.images = images
         self.data_pd = pd.DataFrame({'index':indices, 'scores':scores, 'distances':distances, 'annotation':annotations})
         # print(self.data_pd)
