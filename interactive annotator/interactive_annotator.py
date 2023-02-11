@@ -26,6 +26,7 @@ model_spec = {'model':'resnet18','n_channels':4,'n_filters':64,'n_classes':1,'ke
 batch_size_inference = 2048
 KNN_METRIC = 'cosine'
 COLOR_DICT = {0:QColor(150,200,250),1:QColor(250,200,200),9:QColor(250,250,200)} # 0: nonparasites, 1: parasites, 9: not sure
+ANNOTATIONS_DICT = {'Label as parasite':1,'Label as non-parasite':0,'Label as unsure':9,'Remove Annotation':-1}
 DEV_MODE = True
 
 # on mac
@@ -189,6 +190,7 @@ class GalleryViewWidget(QFrame):
 
         self.tableWidget = TableWidget(rows,columns,parent=self)
 
+        # page navigation
         self.slider = QSlider(Qt.Horizontal)
         self.slider.setTickPosition(QSlider.TicksBelow)
         self.slider.setMinimum(0)
@@ -200,6 +202,12 @@ class GalleryViewWidget(QFrame):
         self.entry.setValue(0)
 
         self.btn_search = QPushButton('Search Similar Images')
+        self.dropdown_sort = QComboBox()
+        self.dropdown_sort.addItems(['Sort by prediction score','Sort by labels'])
+
+        self.btn_annotations = {}
+        for key in ANNOTATIONS_DICT.keys():
+            self.btn_annotations[key] = QPushButton(key)
 
         vbox = QVBoxLayout()
         vbox.addWidget(self.tableWidget)
@@ -207,7 +215,12 @@ class GalleryViewWidget(QFrame):
         grid.addWidget(self.entry,0,0)
         grid.addWidget(self.slider,0,1)
         # if self.is_main_gallery:
-        grid.addWidget(self.btn_search,2,0,2,2)
+        grid.addWidget(self.btn_search,2,0,1,len(ANNOTATIONS_DICT))
+        grid.addWidget(self.dropdown_sort,3,0,1,len(ANNOTATIONS_DICT))
+        i = 0
+        for key in ANNOTATIONS_DICT.keys():
+            grid.addWidget(self.btn_annotations[key],4,i)
+            i = i + 1  
         vbox.addLayout(grid)
         self.setLayout(vbox)
         
