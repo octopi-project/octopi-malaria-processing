@@ -26,6 +26,7 @@ model_spec = {'model':'resnet18','n_channels':4,'n_filters':64,'n_classes':1,'ke
 batch_size_inference = 2048
 KNN_METRIC = 'cosine'
 COLOR_DICT = {0:QColor(150,200,250),1:QColor(250,200,200),9:QColor(250,250,200)} # 0: nonparasites, 1: parasites, 9: not sure
+DEV_MODE = True
 
 # on mac
 # num_rows = 2
@@ -550,6 +551,12 @@ class MainWindow(QMainWindow):
         self.gallery.signal_switchTab.connect(self.switch_tab)
 
         self.gallery_similarity.signal_similaritySearch.connect(self.dataHandler_similarity.populate_similarity_search)
+
+        # dev mode
+        if DEV_MODE:
+            self.dataHandler.load_model('model.pt')
+            self.dataHandler.load_images('test.npy')
+            self.dataHandler.load_annotations('test.csv')
 
     def switch_tab(self):
         self.gallery_tab.setCurrentIndex(1)
