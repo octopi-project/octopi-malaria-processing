@@ -342,7 +342,10 @@ class DataHandler(QObject):
     def load_model(self,path):
         self.model = models.ResNet(model=model_spec['model'],n_channels=model_spec['n_channels'],n_filters=model_spec['n_filters'],
             n_classes=model_spec['n_classes'],kernel_size=model_spec['kernel_size'],stride=model_spec['stride'],padding=model_spec['padding'])
-        self.model.load_state_dict(torch.load(path))
+        if torch.cuda.is_available():
+            self.model.load_state_dict(torch.load(path))
+        else:
+            self.model.load_state_dict(torch.load(path,map_location=torch.device('cpu')))
         self.model_loaded = True 
 
     def load_images(self,path):
