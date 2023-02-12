@@ -11,6 +11,8 @@ import pandas as pd
 import cv2
 import glob
 import torch
+import functools
+import operator
 from sklearn.neighbors import KNeighborsClassifier
 import models
 import utils
@@ -217,8 +219,12 @@ class GalleryViewWidget(QFrame):
         vbox = QVBoxLayout()
         vbox.addWidget(self.tableWidget)
         grid = QGridLayout()
-        grid.addWidget(self.entry,0,0)
-        grid.addWidget(self.slider,0,1)
+        slider = QHBoxLayout()
+        slider.addWidget(self.entry)
+        slider.addWidget(self.slider)
+        grid.addLayout(slider,0,0,1,len(ANNOTATIONS_DICT))
+        # grid.addWidget(self.entry,0,0)
+        # grid.addWidget(self.slider,0,1)
         # if self.is_main_gallery:
         grid.addWidget(self.btn_search,2,0,1,len(ANNOTATIONS_DICT))
         grid.addWidget(self.dropdown_sort,3,0,1,len(ANNOTATIONS_DICT))
@@ -236,8 +242,12 @@ class GalleryViewWidget(QFrame):
         self.btn_search.clicked.connect(self.do_similarity_search)
         self.dropdown_sort.currentTextChanged.connect(self.dataHandler.sort)
         self.dataHandler.signal_sorting_method.connect(self.update_displayed_sorting_method)
+        for key in ANNOTATIONS_DICT.keys():
+            self.btn_annotations[key].clicked.connect(functools.partial(self.assign_annotations,ANNOTATIONS_DICT[key]))
 
     def update_page(self):
+        # clear selections
+        self.tableWidget.clearSelection()
         # self.tableWidget.populate_simulate(None,None)
         if self.dataHandler is not None:
             images,texts,self.image_id,annotations = self.dataHandler.get_page(self.entry.value())
@@ -296,6 +306,14 @@ class GalleryViewWidget(QFrame):
         self.dropdown_sort.blockSignals(True)
         self.dropdown_sort.setCurrentText(sorting_method)
         self.dropdown_sort.blockSignals(False)
+
+    def assign_annotations(self,annotation):
+        selected_images = self.tableWidget.get_selected_cells() # index in the current page
+        # selected_images = self.image_id[selected_images] # global index of the images - this does not work for list, use the method below
+        selected_images = operator.itemgetter(*selected_images)(self.image_id) # selected_images = [self.image_id[i] for i in selected_images]
+        print('lable ' + str(selected_images) + ' as ' + str(annotation))
+        self.dataHandler.update_annotation(selected_images,annotation)
+        self.update_page()
 
 ###########################################################################################
 ##################################  Data Loader Widget  ###################################
@@ -423,6 +441,7 @@ class DataHandler(QObject):
             self.run_model()
         else:
             self.data_pd['output'] = -1 # place holder value
+            self.spot_idx_sorted = np.arange(self.images.shape[0])
 
         # display the images
         self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
