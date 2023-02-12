@@ -2,6 +2,7 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5 import QtCore
+import pyqtgraph.dockarea as dock
 import os
 from datetime import datetime
 import numpy as np
@@ -627,10 +628,29 @@ class MainWindow(QMainWindow):
         # layout.addWidget(self.gallery)
         layout.addWidget(self.gallery_tab)
 
-        self.centralWidget = QWidget()
-        self.centralWidget.setLayout(layout)
-        # self.centralWidget.setFixedWidth(self.centralWidget.minimumSizeHint().width())
-        self.setCentralWidget(self.centralWidget)
+        centralWidget = QWidget()
+        centralWidget.setLayout(layout)
+        dock_annotations = dock.Dock('Interactive Annotations', autoOrientation = False)
+        dock_annotations.addWidget(centralWidget)
+        
+        dock_stats = dock.Dock('Stats', autoOrientation = False)
+        statWidget = QWidget()
+        dock_stats.addWidget(statWidget)
+
+        dock_stats2 = dock.Dock('Stats', autoOrientation = False)
+        statWidget2 = QWidget()
+        dock_stats2.addWidget(statWidget2)
+        
+        main_dockArea = dock.DockArea()
+        main_dockArea.addDock(dock_stats)
+        main_dockArea.addDock(dock_stats2,'bottom')
+        main_dockArea.addDock(dock_annotations,'left')
+        self.setCentralWidget(main_dockArea)
+
+        # self.centralWidget = QWidget()
+        # self.centralWidget.setLayout(layout)
+        # # self.centralWidget.setFixedWidth(self.centralWidget.minimumSizeHint().width())
+        # self.setCentralWidget(self.centralWidget)
 
         # connect
         self.dataHandler.signal_set_total_page_count.connect(self.gallery.set_total_pages)
