@@ -456,38 +456,36 @@ class DataHandler(QObject):
                 print('! dimension mismatch')
                 return 1
         else:
-            self.data_pd = pd.DataFrame({'index':np.arange(self.images.shape[0]),'annotation':-1})
+            self.data_pd = pd.DataFrame({'annotation':-1},index=np.arange(self.images.shape[0]))
+            self.data_pd.index.name = 'index'
 
         self.images_loaded = True
+        print('images loaded')
         
         # run the model if the model has been loaded
         if self.model_loaded == True:
             self.run_model()
         else:
-            self.data_pd['output'] = -1 # place holder value
+            self.data_pd['output'] = -1 # placeholder value
             if self.spot_idx_sorted is None:
                 self.spot_idx_sorted = np.arange(self.images.shape[0]) # only populate the idx if it has not been populated
 
         # display the images
         self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
         self.signal_populate_page0.emit()
-
-        print('images loaded')
-        print(self.data_pd)
-
+        
         return 0
 
     def run_model(self):
         predictions, features = utils.generate_predictions_and_features(self.model,self.images,batch_size_inference)
-        output_pd = pd.DataFrame({'index':np.arange(self.images.shape[0]),'output':predictions[:,0]})
+        output_pd = pd.DataFrame({'output':predictions[:,0]},index=np.arange(self.images.shape[0]))
         if 'output' in self.data_pd:
             self.data_pd = self.data_pd.drop(columns=['output'])
-        self.data_pd = self.data_pd.merge(output_pd,on='index')
-        print(self.data_pd)
+        self.data_pd = self.data_pd.merge(output_pd,left_index=True,right_index=True)
         
         # sort the predictions
         self.data_pd = self.data_pd.sort_values('output',ascending=False)
-        self.spot_idx_sorted = self.data_pd['index'].to_numpy().astype(int)
+        self.spot_idx_sorted = self.data_pd.index.to_numpy().astype(int)
         
         self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
         self.signal_populate_page0.emit()
@@ -504,10 +502,10 @@ class DataHandler(QObject):
         if self.data_pd is not None:
             annotation_pd = pd.read_csv(path,index_col='index')
             self.data_pd = self.data_pd.drop(columns=['annotation'])
-            self.data_pd = self.data_pd.merge(annotation_pd,on='index')
+            self.data_pd = self.data_pd.merge(annotation_pd,left_index=True, right_index=True, how='outer')
             self.signal_populate_page0.emit() # update the display
         else:
-            self.data_pd = pd.read_csv(path)
+            self.data_pd = pd.read_csv(path,index_col='index')
 
         # size match check
         if self.images_loaded:
@@ -521,7 +519,7 @@ class DataHandler(QObject):
 
         # sort the annotations
         self.data_pd = self.data_pd.sort_values('annotation',ascending=False)
-        self.spot_idx_sorted = self.data_pd['index'].to_numpy().astype(int)
+        self.spot_idx_sorted = self.data_pd.index.to_numpy().astype(int)
         self.signal_sorting_method.emit('Sort by labels')
         
         # update the display if images have been loaded already
@@ -529,7 +527,6 @@ class DataHandler(QObject):
             self.signal_populate_page0.emit()
         
         print('annotations loaded')
-        print(self.data_pd)
         return 0
         
     def set_number_of_images_per_page(self,n):
@@ -552,7 +549,7 @@ class DataHandler(QObject):
 
             else:
                 texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.data_pd.iloc[i]['output'])) # .at would use the idx before sorting
-            image_id.append(int(self.data_pd.iloc[i]['index']))
+            image_id.append(int(self.data_pd.index[i]))
             annotations.append(int(self.data_pd.iloc[i]['annotation']))
         return images, texts, image_id, annotations
 
@@ -569,7 +566,7 @@ class DataHandler(QObject):
         if self.is_for_similarity_search:
             self.spot_idx_sorted = self.data_pd['idx_local'].to_numpy().astype(int)
         else:
-            self.spot_idx_sorted = self.data_pd['index'].to_numpy().astype(int)
+            self.spot_idx_sorted = self.data_pd.index.to_numpy().astype(int)
         self.signal_populate_page0.emit()
         self.signal_sorting_method.emit(criterion)
 
@@ -585,7 +582,7 @@ class DataHandler(QObject):
 
     def populate_similarity_search(self,images,indices,scores,distances,annotations):
         self.images = images
-        self.data_pd = pd.DataFrame({'index':indices,'idx_global':indices,'idx_local':np.arange(self.images.shape[0]).astype(int),'output':scores, 'distance':distances, 'annotation':annotations}) # idx_local for indexing the spot images
+        self.data_pd = pd.DataFrame({'idx_global':indices,'idx_local':np.arange(self.images.shape[0]).astype(int),'output':scores, 'distance':distances, 'annotation':annotations},index=indices) # idx_local for indexing the spot images
         self.data_pd = self.data_pd.set_index('idx_global')
         print('populated data_pd of the similarity search data handler:')
         print(self.data_pd)
@@ -602,8 +599,7 @@ class DataHandler(QObject):
         if self.is_for_similarity_search:
             print(self.data_pd)
         self.update_annotation_stats() # note - can also do it increamentally instead of going through the full df everytime
-        print(self.data_pd)
-        
+
     def update_annotation_stats(self):
         # get annotation stats
         counts = []
@@ -618,7 +614,7 @@ class DataHandler(QObject):
                 self.data_pd = self.data_pd.drop(columns=['output'])
             # save the annotations
             current_time = datetime.now().strftime('%Y-%m-%d_%H-%M')
-            self.data_pd.to_csv(os.path.splitext(self.image_path)[0] + '_annotations_' + str(sum(self.data_pd['annotation']!=-1)) + '_' + str(self.data_pd.shape[0])  + '_' + current_time + '.csv',index=False)
+            self.data_pd.to_csv(os.path.splitext(self.image_path)[0] + '_annotations_' + str(sum(self.data_pd['annotation']!=-1)) + '_' + str(self.data_pd.shape[0])  + '_' + current_time + '.csv')
             # remove the temporary file
             tmp_file = os.path.dirname(self.image_path)+'_tmp.csv'
             if os.path.exists(tmp_file):
