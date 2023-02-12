@@ -3,6 +3,7 @@ from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5 import QtCore
 import pyqtgraph.dockarea as dock
+import pyqtgraph as pg
 import os
 from datetime import datetime
 import numpy as np
@@ -16,6 +17,11 @@ from sklearn.neighbors import KNeighborsClassifier
 import models
 import utils
 
+from matplotlib import pyplot as plt
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_qt5agg import FigureCanvas
+from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT
+
 ##########################################################
 ################  Default configurations  ################
 ##########################################################
@@ -27,7 +33,10 @@ model_spec = {'model':'resnet18','n_channels':4,'n_filters':64,'n_classes':1,'ke
 batch_size_inference = 2048
 KNN_METRIC = 'cosine'
 COLOR_DICT = {0:QColor(150,200,250),1:QColor(250,200,200),9:QColor(250,250,200)} # 0: nonparasites, 1: parasites, 9: not sure
+COLOR_DICT_PLOT = {-1:'#C8C8C8',0:'#96C8FA',1:'#FAC8C8',9:'#FAFAC8'}
 ANNOTATIONS_DICT = {'Label as parasite':1,'Label as non-parasite':0,'Label as unsure':9,'Remove Annotation':-1}
+ANNOTATIONS_REVERSE_DICT = {-1:'not labeled',0:'non-parasite',1:'parasite',9:'unsure'}
+PLOTS = ['Labels','Annotation Progress','Prediction score','Similarity','UMAP']
 DEV_MODE = True
 
 # on mac
@@ -598,6 +607,41 @@ class DataHandler(QObject):
             if os.path.exists(tmp_file):
                 os.remove(tmp_file)
 
+
+###########################################################################################
+#####################################  Matplotlib   #######################################
+###########################################################################################
+class PiePlotWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        #  create widgets
+        self.view = FigureCanvas(Figure(figsize=(5, 3)))
+        self.axes = self.view.figure.subplots()
+
+        self.labels = list(ANNOTATIONS_REVERSE_DICT.values())
+        self.sizes = np.zeros(len(self.labels)) # self.sizes = np.zeros(len(self.labels))
+        self.sizes[0] = 1 # to avoid divide by zero
+        self.color = list(COLOR_DICT_PLOT.values())
+
+        #  Create layout
+        vlayout = QVBoxLayout()
+        vlayout.addWidget(self.view)
+        self.setLayout(vlayout)
+
+        self._update_plot()
+
+    def _update_plot(self):
+        self.axes.clear()
+        self.axes.pie(self.sizes, explode = 0.1*np.ones(len(self.labels)), colors = self.color, shadow=False, startangle=0) # autopct='%1.1f%%', pctdistance=1.2
+        self.axes.axis('equal')
+        self.axes.legend(self.labels,loc='upper center',bbox_to_anchor=(0.5, 0.2),fancybox=True,ncol=int(len(self.labels)/2))
+        self.view.draw()
+
+    @pyqtSlot()
+    def update_plot(self,sizes):
+        self.sizes = sizes
+        self._update_plot()
+
 ###########################################################################################
 #####################################  Main Window  #######################################
 ###########################################################################################
@@ -618,6 +662,12 @@ class MainWindow(QMainWindow):
         self.gallery = GalleryViewWidget(num_rows,num_cols,self.dataHandler,is_main_gallery=True)
         self.gallery_similarity = GalleryViewWidget(num_rows,num_cols,self.dataHandler_similarity,dataHandler2=self.dataHandler)
 
+        self.plots = {}
+        self.plots['Labels'] = PiePlotWidget()
+        self.plots['Annotation Progress'] = QWidget()
+        self.plots['Inference Results'] = QWidget()
+        self.plots['Similarity'] = QWidget()
+
         # tab widget
         self.gallery_tab = QTabWidget()
         self.gallery_tab.addTab(self.gallery,'Full Dataset')
@@ -628,23 +678,26 @@ class MainWindow(QMainWindow):
         # layout.addWidget(self.gallery)
         layout.addWidget(self.gallery_tab)
 
+        # # plots
         centralWidget = QWidget()
         centralWidget.setLayout(layout)
         dock_annotations = dock.Dock('Interactive Annotations', autoOrientation = False)
         dock_annotations.addWidget(centralWidget)
-        
-        dock_stats = dock.Dock('Stats', autoOrientation = False)
-        statWidget = QWidget()
-        dock_stats.addWidget(statWidget)
 
-        dock_stats2 = dock.Dock('Stats', autoOrientation = False)
-        statWidget2 = QWidget()
-        dock_stats2.addWidget(statWidget2)
+        dock_plots = {}
+        for plot in self.plots.keys():
+            dock_plots[plot] = dock.Dock(plot, autoOrientation = False)
+            dock_plots[plot].addWidget(self.plots[plot])
         
         main_dockArea = dock.DockArea()
-        main_dockArea.addDock(dock_stats)
-        main_dockArea.addDock(dock_stats2,'bottom')
-        main_dockArea.addDock(dock_annotations,'left')
+        main_dockArea.addDock(dock_annotations)
+        main_dockArea.addDock(dock_plots['Labels'],'right')
+        # main_dockArea.addDock(dock_plots['Annotation Progress'],'below',relativeTo=dock_plots['Labels'])
+        # dock_plots['Labels'].raiseDock()
+        main_dockArea.addDock(dock_plots['Inference Results'],'bottom',relativeTo=dock_plots['Labels'])
+        main_dockArea.addDock(dock_plots['Similarity'],'below',relativeTo=dock_plots['Inference Results'])
+        dock_plots['Inference Results'].raiseDock() # bring some to the front
+        
         self.setCentralWidget(main_dockArea)
 
         # self.centralWidget = QWidget()
