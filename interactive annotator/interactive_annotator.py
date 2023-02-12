@@ -1,5 +1,3 @@
-# https://stackoverflow.com/questions/45896291/how-to-show-image-and-text-at-same-cell-in-qtablewidget-in-pyqt
-
 from PyQt5.QtWidgets import * 
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
@@ -48,7 +46,7 @@ if config_files:
 ##### end of loading machine specific configurations #####
 ##########################################################
 
-
+# modified from https://stackoverflow.com/questions/45896291/how-to-show-image-and-text-at-same-cell-in-qtablewidget-in-pyqt
 def generate_overlay(image):
     images_fluorescence = image[:,2::-1,:,:]
     images_dpc = image[:,3,:,:]
@@ -111,6 +109,7 @@ class TableWidget(QTableWidget):
         self.parent = parent
         self.num_cols = columns
         self.num_rows = rows
+        self.id = None
         self.setColumnCount(columns)
         self.setRowCount(rows)        
         self.cellClicked.connect(self.onCellClicked)
@@ -128,12 +127,18 @@ class TableWidget(QTableWidget):
         self.setFixedWidth(self.horizontalHeader().length()+80)
         self.setFixedHeight(5*self.rowHeight(0)+80)
 
-    def populate(self, images, texts, annotations):
+    def populate(self, images, texts, annotations, image_id):
+        self.id = image_id
         for i in range(self.rowCount()):
             for j in range(self.columnCount()):
                 idx = i*self.num_cols + j
                 if idx >= images.shape[0]:
                     self.setCellWidget(i, j, None)
+                    # clear background - to improve the code
+                    self.setItem(i, j, QTableWidgetItem())
+                    palette = self.palette()
+                    default_color = palette.color(QPalette.Window)
+                    self.item(i,j).setBackground(default_color)
                 else:
                     image = images[idx,].astype(np.uint8)
                     # resize
@@ -172,7 +177,9 @@ class TableWidget(QTableWidget):
     @pyqtSlot(int, int)
     def onCellClicked(self, row, column):
         w = self.cellWidget(row, column)
-        print(w.text)
+        if w:
+            idx = row*self.num_cols + column
+            print(str(self.id[idx]) + ' - ' + w.text)
 
 ###########################################################################################
 #####################################  Gallery View  ######################################
@@ -182,6 +189,7 @@ class GalleryViewWidget(QFrame):
 
     signal_switchTab = pyqtSignal()
     signal_similaritySearch = pyqtSignal(np.ndarray,np.ndarray,np.ndarray,np.ndarray,np.ndarray)
+    signal_updatePage = pyqtSignal()
 
     def __init__(self, rows = 10, columns = 10, dataHandler=None, dataHandler2=None, is_main_gallery=False, parent=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -251,7 +259,7 @@ class GalleryViewWidget(QFrame):
         # self.tableWidget.populate_simulate(None,None)
         if self.dataHandler is not None:
             images,texts,self.image_id,annotations = self.dataHandler.get_page(self.entry.value())
-            self.tableWidget.populate(images,texts,annotations)
+            self.tableWidget.populate(images,texts,annotations,self.image_id)
         else:
             self.tableWidget.populate_simulate(None,None)
 
@@ -292,7 +300,7 @@ class GalleryViewWidget(QFrame):
         # convert to global id
         selected_image = self.image_id[selected_images[0]]
         # find similar images
-        k = 200
+        k = 10
         print( 'finding ' + str(k) + ' images similar to ' + str(selected_image) )
         if self.is_main_gallery:
             images, indices, scores, distances, annotations = self.dataHandler.find_similar_images(selected_image,k)
@@ -309,11 +317,18 @@ class GalleryViewWidget(QFrame):
 
     def assign_annotations(self,annotation):
         selected_images = self.tableWidget.get_selected_cells() # index in the current page
+        selected_images = [i for i in selected_images if i < len(self.image_id)] # filter it 
         # selected_images = self.image_id[selected_images] # global index of the images - this does not work for list, use the method below
+        if len(selected_images) == 0:
+            return
         selected_images = operator.itemgetter(*selected_images)(self.image_id) # selected_images = [self.image_id[i] for i in selected_images]
         print('lable ' + str(selected_images) + ' as ' + str(annotation))
         self.dataHandler.update_annotation(selected_images,annotation)
         self.update_page()
+        if self.is_main_gallery == False:
+            # update for the full dataset
+            self.dataHandler2.update_annotation(selected_images,annotation)
+            self.signal_updatePage.emit()
 
 ###########################################################################################
 ##################################  Data Loader Widget  ###################################
@@ -552,8 +567,10 @@ class DataHandler(QObject):
 
     def populate_similarity_search(self,images,indices,scores,distances,annotations):
         self.images = images
-        self.data_pd = pd.DataFrame({'index':indices,'idx_local':np.arange(self.images.shape[0]).astype(int),'output':scores, 'distance':distances, 'annotation':annotations}) # idx_local for indexing the spot images
-        # print(self.data_pd)
+        self.data_pd = pd.DataFrame({'index':indices,'idx_global':indices,'idx_local':np.arange(self.images.shape[0]).astype(int),'output':scores, 'distance':distances, 'annotation':annotations}) # idx_local for indexing the spot images
+        self.data_pd = self.data_pd.set_index('idx_global')
+        print('populated data_pd of the similarity search data handler:')
+        print(self.data_pd)
         self.images_loaded = True
         # self.spot_idx_sorted = self.data_pd['index'].to_numpy().astype(int)
         self.spot_idx_sorted = np.arange(self.images.shape[0]).astype(int)
@@ -564,6 +581,8 @@ class DataHandler(QObject):
         # condition = df['index'].isin(index), df.loc[condition, 'annotation'] = annotation 
         # to-do: support dealing with multiple datasets using multi-level indexing
         self.data_pd.loc[index,'annotation'] = annotation
+        if self.is_for_similarity_search:
+            print(self.data_pd)
 
     def save_annotations(self):
         if self.image_path:
@@ -624,6 +643,7 @@ class MainWindow(QMainWindow):
         self.gallery.signal_switchTab.connect(self.switch_tab)
 
         self.gallery_similarity.signal_similaritySearch.connect(self.dataHandler_similarity.populate_similarity_search)
+        self.gallery_similarity.signal_updatePage.connect(self.gallery.update_page)
 
         # dev mode
         if DEV_MODE:
