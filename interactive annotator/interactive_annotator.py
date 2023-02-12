@@ -204,6 +204,11 @@ class GalleryViewWidget(QFrame):
         self.btn_search = QPushButton('Search Similar Images')
         self.dropdown_sort = QComboBox()
         self.dropdown_sort.addItems(['Sort by prediction score','Sort by labels'])
+        if self.is_main_gallery == False:
+            self.dropdown_sort.insertItem(0,'Sort by similarity')
+            self.dropdown_sort.blockSignals(True)
+            self.dropdown_sort.setCurrentIndex(0)
+            self.dropdown_sort.blockSignals(False)
 
         self.btn_annotations = {}
         for key in ANNOTATIONS_DICT.keys():
@@ -229,6 +234,8 @@ class GalleryViewWidget(QFrame):
         self.slider.valueChanged.connect(self.entry.setValue)
         self.entry.valueChanged.connect(self.update_page)
         self.btn_search.clicked.connect(self.do_similarity_search)
+        self.dropdown_sort.currentTextChanged.connect(self.dataHandler.sort)
+        self.dataHandler.signal_sorting_method.connect(self.update_displayed_sorting_method)
 
     def update_page(self):
         # self.tableWidget.populate_simulate(None,None)
@@ -256,6 +263,13 @@ class GalleryViewWidget(QFrame):
             msg.setText("No image or more than one images selected. Please select one image.")
             msg.exec_()
             return
+        # ensure a model is present
+        if self.dataHandler.model_loaded == False:
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Information)
+            msg.setText("Load a model first")
+            msg.exec_()
+            return
         '''
         # check if embedding has been loaded
         if self.dataHandler.embeddings_loaded != True:
@@ -277,6 +291,11 @@ class GalleryViewWidget(QFrame):
         # emit the results
         self.signal_similaritySearch.emit(images,indices,scores,distances,annotations)
         self.signal_switchTab.emit()
+
+    def update_displayed_sorting_method(self,sorting_method):
+        self.dropdown_sort.blockSignals(True)
+        self.dropdown_sort.setCurrentText(sorting_method)
+        self.dropdown_sort.blockSignals(False)
 
 ###########################################################################################
 ##################################  Data Loader Widget  ###################################
@@ -353,6 +372,7 @@ class DataHandler(QObject):
 
     signal_populate_page0 = pyqtSignal()
     signal_set_total_page_count = pyqtSignal(int)
+    signal_sorting_method = pyqtSignal(str)
 
     def __init__(self,is_for_similarity_search=False):
         QObject.__init__(self)
@@ -379,7 +399,7 @@ class DataHandler(QObject):
         self.model_loaded = True
         # if the images are already loaded, run the model
         if self.images_loaded:
-            self.run_mode()
+            self.run_model()
             self.signal_populate_page0.emit()
 
     def load_images(self,path):
@@ -401,6 +421,8 @@ class DataHandler(QObject):
         # run the model if the model has been loaded
         if self.model_loaded == True:
             self.run_model()
+        else:
+            self.data_pd['output'] = -1 # place holder value
 
         # display the images
         self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
@@ -422,6 +444,7 @@ class DataHandler(QObject):
         
         self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
         self.signal_populate_page0.emit()
+        self.signal_sorting_method.emit('Sort by prediction score')
 
         # embeddings
         self.embeddings = features
@@ -454,6 +477,7 @@ class DataHandler(QObject):
         if self.images_loaded:
             self.signal_populate_page0.emit()
         
+        self.signal_sorting_method.emit('Sort by labels')
         return 0
         
     def set_number_of_images_per_page(self,n):
@@ -472,13 +496,30 @@ class DataHandler(QObject):
         for i in range(idx_start,idx_end):
             # texts.append( '[' + str(i) + ']  ' + str(self.data_pd.iloc[i]['index']) + ': ' + "{:.2f}".format(self.data_pd.iloc[i]['output']))
             if self.is_for_similarity_search:
-                texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.data_pd.iloc[i]['scores']) + '\n{:.1e}'.format(self.data_pd.iloc[i]['distances'])) # .at would use the idx before sorting # + '{:.1e}'.format(self.data_pd.iloc[i]['distances'])
+                texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.data_pd.iloc[i]['output']) + '\n{:.1e}'.format(self.data_pd.iloc[i]['distance'])) # .at would use the idx before sorting # + '{:.1e}'.format(self.data_pd.iloc[i]['distances'])
 
             else:
                 texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.data_pd.iloc[i]['output'])) # .at would use the idx before sorting
             image_id.append(int(self.data_pd.iloc[i]['index']))
             annotations.append(int(self.data_pd.iloc[i]['annotation']))
         return images, texts, image_id, annotations
+
+    def sort(self,criterion):
+        print(criterion)
+        if criterion == 'Sort by prediction score':
+            self.data_pd = self.data_pd.sort_values('output',ascending=False)
+        elif criterion == 'Sort by labels':
+            self.data_pd = self.data_pd.sort_values('annotation',ascending=False)
+        elif criterion == 'Sort by similarity':
+            self.data_pd = self.data_pd.sort_values('distance',ascending=True)
+        
+        # update the sorted spot idx
+        if self.is_for_similarity_search:
+            self.spot_idx_sorted = self.data_pd['idx_local'].to_numpy().astype(int)
+        else:
+            self.spot_idx_sorted = self.data_pd['index'].to_numpy().astype(int)
+        self.signal_populate_page0.emit()
+        self.signal_sorting_method.emit(criterion)
 
     def find_similar_images(self,idx,k=200):
         self.neigh.set_params(n_neighbors=k+1)
@@ -492,7 +533,7 @@ class DataHandler(QObject):
 
     def populate_similarity_search(self,images,indices,scores,distances,annotations):
         self.images = images
-        self.data_pd = pd.DataFrame({'index':indices, 'scores':scores, 'distances':distances, 'annotation':annotations})
+        self.data_pd = pd.DataFrame({'index':indices,'idx_local':np.arange(self.images.shape[0]).astype(int),'output':scores, 'distance':distances, 'annotation':annotations}) # idx_local for indexing the spot images
         # print(self.data_pd)
         self.images_loaded = True
         # self.spot_idx_sorted = self.data_pd['index'].to_numpy().astype(int)
