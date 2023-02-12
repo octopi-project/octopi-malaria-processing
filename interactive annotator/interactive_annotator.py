@@ -416,6 +416,7 @@ class DataHandler(QObject):
     signal_populate_page0 = pyqtSignal()
     signal_set_total_page_count = pyqtSignal(int)
     signal_sorting_method = pyqtSignal(str)
+    signal_annotation_stats = pyqtSignal(np.ndarray)
 
     def __init__(self,is_for_similarity_search=False):
         QObject.__init__(self)
@@ -456,8 +457,6 @@ class DataHandler(QObject):
                 return 1
         else:
             self.data_pd = pd.DataFrame({'index':np.arange(self.images.shape[0]),'annotation':-1})
-            self.data_pd.set_index('index')
-            # print(self.data_pd)
 
         self.images_loaded = True
         
@@ -466,12 +465,16 @@ class DataHandler(QObject):
             self.run_model()
         else:
             self.data_pd['output'] = -1 # place holder value
-            self.spot_idx_sorted = np.arange(self.images.shape[0])
+            if self.spot_idx_sorted is None:
+                self.spot_idx_sorted = np.arange(self.images.shape[0]) # only populate the idx if it has not been populated
 
         # display the images
         self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
         self.signal_populate_page0.emit()
-        
+
+        print('images loaded')
+        print(self.data_pd)
+
         return 0
 
     def run_model(self):
@@ -511,17 +514,22 @@ class DataHandler(QObject):
             if self.images.shape[0] != self.data_pd.shape[0]:
                 print('! dimension mismatch')
                 return 1
+        self.annotations_loaded = True
+
+        # update stats
+        self.update_annotation_stats()
 
         # sort the annotations
         self.data_pd = self.data_pd.sort_values('annotation',ascending=False)
         self.spot_idx_sorted = self.data_pd['index'].to_numpy().astype(int)
-        self.annotations_loaded = True
+        self.signal_sorting_method.emit('Sort by labels')
         
         # update the display if images have been loaded already
         if self.images_loaded:
             self.signal_populate_page0.emit()
         
-        self.signal_sorting_method.emit('Sort by labels')
+        print('annotations loaded')
+        print(self.data_pd)
         return 0
         
     def set_number_of_images_per_page(self,n):
@@ -593,6 +601,15 @@ class DataHandler(QObject):
         self.data_pd.loc[index,'annotation'] = annotation
         if self.is_for_similarity_search:
             print(self.data_pd)
+        self.update_annotation_stats() # note - can also do it increamentally instead of going through the full df everytime
+        print(self.data_pd)
+        
+    def update_annotation_stats(self):
+        # get annotation stats
+        counts = []
+        for label in ANNOTATIONS_REVERSE_DICT.keys():
+            counts.append(sum(self.data_pd['annotation']==label))
+        self.signal_annotation_stats.emit(np.array(counts))
 
     def save_annotations(self):
         if self.image_path:
@@ -601,7 +618,7 @@ class DataHandler(QObject):
                 self.data_pd = self.data_pd.drop(columns=['output'])
             # save the annotations
             current_time = datetime.now().strftime('%Y-%m-%d_%H-%M')
-            self.data_pd.to_csv(os.path.splitext(self.image_path)[0] + '_annotations_' + str(sum(self.data_pd['annotation']!=-1)) + '_' + str(self.data_pd.shape[0])  + '_' + current_time + '.csv')
+            self.data_pd.to_csv(os.path.splitext(self.image_path)[0] + '_annotations_' + str(sum(self.data_pd['annotation']!=-1)) + '_' + str(self.data_pd.shape[0])  + '_' + current_time + '.csv',index=False)
             # remove the temporary file
             tmp_file = os.path.dirname(self.image_path)+'_tmp.csv'
             if os.path.exists(tmp_file):
@@ -637,7 +654,6 @@ class PiePlotWidget(QWidget):
         self.axes.legend(self.labels,loc='upper center',bbox_to_anchor=(0.5, 0.2),fancybox=True,ncol=int(len(self.labels)/2))
         self.view.draw()
 
-    @pyqtSlot()
     def update_plot(self,sizes):
         self.sizes = sizes
         self._update_plot()
@@ -717,6 +733,8 @@ class MainWindow(QMainWindow):
 
         self.gallery_similarity.signal_similaritySearch.connect(self.dataHandler_similarity.populate_similarity_search)
         self.gallery_similarity.signal_updatePage.connect(self.gallery.update_page)
+
+        self.dataHandler.signal_annotation_stats.connect(self.plots['Labels'].update_plot)
 
         # dev mode
         if DEV_MODE:
