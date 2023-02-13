@@ -417,6 +417,7 @@ class DataHandler(QObject):
     signal_set_total_page_count = pyqtSignal(int)
     signal_sorting_method = pyqtSignal(str)
     signal_annotation_stats = pyqtSignal(np.ndarray)
+    signal_predictions = pyqtSignal(np.ndarray,np.ndarray)
 
     def __init__(self,is_for_similarity_search=False):
         QObject.__init__(self)
@@ -496,6 +497,9 @@ class DataHandler(QObject):
         self.embeddings_loaded = True
         self.neigh = KNeighborsClassifier(metric=KNN_METRIC)
         self.neigh.fit(self.embeddings, np.zeros(self.embeddings.shape[0]))
+
+        # emit the results for display
+        self.signal_predictions.emit(self.data_pd['output'].to_numpy(),self.data_pd['annotation'].to_numpy())
 
     def load_annotations(self,path):
         # load the annotation
@@ -696,6 +700,35 @@ class BarPlotWidget(QWidget):
         self.counts = counts
         self._update_plot()
 
+class HistogramPlotWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        #  create widgets
+        self.view = FigureCanvas(Figure(figsize=(5, 3)))
+        self.axes = self.view.figure.subplots()
+
+        self.score = None
+        self.labels = list(ANNOTATIONS_REVERSE_DICT.values())
+
+        #  Create layout
+        vlayout = QVBoxLayout()
+        vlayout.addWidget(self.view)
+        self.setLayout(vlayout)
+
+        self._update_plot()
+
+    def _update_plot(self):
+        if self.score is not None:
+            self.axes.clear()
+            for label in COLOR_DICT_PLOT.keys():
+                x = self.score[self.annotation==label]
+                self.axes.hist(x,bins=50,range=(0,1),color=COLOR_DICT_PLOT[label])
+            self.view.draw()
+
+    def update_plot(self,score,annotation):
+        self.score = score
+        self.annotation = annotation
+        self._update_plot()
 
 ###########################################################################################
 #####################################  Main Window  #######################################
@@ -720,7 +753,7 @@ class MainWindow(QMainWindow):
         self.plots = {}
         self.plots['Labels'] = PiePlotWidget()
         self.plots['Annotation Progress'] = BarPlotWidget()
-        self.plots['Inference Results'] = QWidget()
+        self.plots['Inference Result'] = HistogramPlotWidget()
         self.plots['Similarity'] = QWidget()
 
         # tab widget
@@ -749,9 +782,9 @@ class MainWindow(QMainWindow):
         main_dockArea.addDock(dock_plots['Labels'],'right')
         main_dockArea.addDock(dock_plots['Annotation Progress'],'below',relativeTo=dock_plots['Labels'])
         dock_plots['Labels'].raiseDock()
-        main_dockArea.addDock(dock_plots['Inference Results'],'bottom',relativeTo=dock_plots['Labels'])
-        main_dockArea.addDock(dock_plots['Similarity'],'below',relativeTo=dock_plots['Inference Results'])
-        dock_plots['Inference Results'].raiseDock() # bring some to the front
+        main_dockArea.addDock(dock_plots['Inference Result'],'bottom',relativeTo=dock_plots['Labels'])
+        main_dockArea.addDock(dock_plots['Similarity'],'below',relativeTo=dock_plots['Inference Result'])
+        dock_plots['Inference Result'].raiseDock() # bring some to the front
         
         self.setCentralWidget(main_dockArea)
 
@@ -775,6 +808,7 @@ class MainWindow(QMainWindow):
 
         self.dataHandler.signal_annotation_stats.connect(self.plots['Labels'].update_plot)
         self.dataHandler.signal_annotation_stats.connect(self.plots['Annotation Progress'].update_plot)
+        self.dataHandler.signal_predictions.connect(self.plots['Inference Result'].update_plot)
 
         # dev mode
         if DEV_MODE:
