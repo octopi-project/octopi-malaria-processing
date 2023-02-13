@@ -292,7 +292,11 @@ class GalleryViewWidget(QFrame):
             msg.exec_()
             return
         # ensure a model is present
-        if self.dataHandler.model_loaded == False:
+        if self.is_main_gallery:
+            model_loaded = self.dataHandler.model_loaded
+        else:
+            model_loaded = self.dataHandler2.model_loaded
+        if model_loaded == False:
             msg = QMessageBox()
             msg.setIcon(QMessageBox.Information)
             msg.setText("Load a model first")
