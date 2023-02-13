@@ -632,8 +632,8 @@ class PiePlotWidget(QWidget):
         self.axes = self.view.figure.subplots()
 
         self.labels = list(ANNOTATIONS_REVERSE_DICT.values())
-        self.sizes = np.zeros(len(self.labels)) # self.sizes = np.zeros(len(self.labels))
-        self.sizes[0] = 1 # to avoid divide by zero
+        self.counts = np.zeros(len(self.labels)) # self.counts = np.zeros(len(self.labels))
+        self.counts[0] = 1 # to avoid divide by zero
         self.color = list(COLOR_DICT_PLOT.values())
 
         #  Create layout
@@ -645,14 +645,57 @@ class PiePlotWidget(QWidget):
 
     def _update_plot(self):
         self.axes.clear()
-        self.axes.pie(self.sizes, explode = 0.1*np.ones(len(self.labels)), colors = self.color, shadow=False, startangle=0) # autopct='%1.1f%%', pctdistance=1.2
+        self.axes.pie(self.counts, explode = 0.1*np.ones(len(self.labels)), colors = self.color, shadow=False, startangle=0) # autopct='%1.1f%%', pctdistance=1.2
         self.axes.axis('equal')
-        self.axes.legend(self.labels,loc='upper center',bbox_to_anchor=(0.5, 0.2),fancybox=True,ncol=int(len(self.labels)/2))
+        self.axes.legend(self.labels,loc='upper center',bbox_to_anchor=(0.5, 0.075),fancybox=True,ncol=int(len(self.labels)/2))
         self.view.draw()
 
-    def update_plot(self,sizes):
-        self.sizes = sizes
+    def update_plot(self,counts):
+        self.counts = counts
         self._update_plot()
+
+class BarPlotWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        #  create widgets
+        self.view = FigureCanvas(Figure(figsize=(5, 3)))
+        self.axes = self.view.figure.subplots()
+
+        self.labels = list(ANNOTATIONS_REVERSE_DICT.values())
+        self.counts = np.zeros(len(self.labels)) # self.counts = np.zeros(len(self.labels))
+        self.color = list(COLOR_DICT_PLOT.values())   
+
+        #  Create layout
+        vlayout = QVBoxLayout()
+        vlayout.addWidget(self.view)
+        self.setLayout(vlayout)
+
+        self._update_plot()
+
+    def _update_plot(self):
+        self.axes.clear()
+        self.barh = self.axes.barh(self.labels, self.counts, label=self.labels, tick_label=['']*4, color=self.color)
+        if max(self.counts==0):
+            self.axes.set_xlim(0, 1)
+        self.axes.get_xaxis().set_ticks([])
+        self.axes.tick_params(left = False, bottom=False)
+        # y_pos = np.arange(len(self.labels))
+        # self.axes.set_yticks(y_pos, labels=self.labels)
+        # self.axes.invert_yaxis()  # labels read top-to-bottom
+        self.axes.bar_label(self.barh, fmt='%d')
+        self.axes.spines['top'].set_visible(False)
+        self.axes.spines['right'].set_visible(False)
+        legend = self.axes.legend(self.labels,loc='upper center',bbox_to_anchor=(0.5, 0.075),fancybox=True,ncol=int(len(self.labels)/2))
+        bbox = legend.get_window_extent()
+        self.view.figure.set_size_inches(1.2*bbox.width/self.view.figure.dpi, self.view.figure.get_size_inches()[1]) 
+        self.view.setMinimumSize(self.view.sizeHint())
+        # self.view.setMinimumSize(self.view.size())       
+        self.view.draw()
+
+    def update_plot(self,counts):
+        self.counts = counts
+        self._update_plot()
+
 
 ###########################################################################################
 #####################################  Main Window  #######################################
@@ -676,7 +719,7 @@ class MainWindow(QMainWindow):
 
         self.plots = {}
         self.plots['Labels'] = PiePlotWidget()
-        self.plots['Annotation Progress'] = QWidget()
+        self.plots['Annotation Progress'] = BarPlotWidget()
         self.plots['Inference Results'] = QWidget()
         self.plots['Similarity'] = QWidget()
 
@@ -704,8 +747,8 @@ class MainWindow(QMainWindow):
         main_dockArea = dock.DockArea()
         main_dockArea.addDock(dock_annotations)
         main_dockArea.addDock(dock_plots['Labels'],'right')
-        # main_dockArea.addDock(dock_plots['Annotation Progress'],'below',relativeTo=dock_plots['Labels'])
-        # dock_plots['Labels'].raiseDock()
+        main_dockArea.addDock(dock_plots['Annotation Progress'],'below',relativeTo=dock_plots['Labels'])
+        dock_plots['Labels'].raiseDock()
         main_dockArea.addDock(dock_plots['Inference Results'],'bottom',relativeTo=dock_plots['Labels'])
         main_dockArea.addDock(dock_plots['Similarity'],'below',relativeTo=dock_plots['Inference Results'])
         dock_plots['Inference Results'].raiseDock() # bring some to the front
@@ -731,6 +774,7 @@ class MainWindow(QMainWindow):
         self.gallery_similarity.signal_updatePage.connect(self.gallery.update_page)
 
         self.dataHandler.signal_annotation_stats.connect(self.plots['Labels'].update_plot)
+        self.dataHandler.signal_annotation_stats.connect(self.plots['Annotation Progress'].update_plot)
 
         # dev mode
         if DEV_MODE:
