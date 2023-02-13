@@ -25,10 +25,13 @@ from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT
 ##########################################################
 ################  Default configurations  ################
 ##########################################################
-num_rows = 6
+NUM_ROWS = 6
 MAX_NUM_ROWS_DISPLAYED_PER_PAGE = 6
 num_cols = 10
 SCALE_FACTOR = 8
+
+K_SIMILAR_DEFAULT = 20
+
 model_spec = {'model':'resnet18','n_channels':4,'n_filters':64,'n_classes':1,'kernel_size':3,'stride':1,'padding':1}
 batch_size_inference = 2048
 KNN_METRIC = 'cosine'
@@ -40,7 +43,7 @@ PLOTS = ['Labels','Annotation Progress','Prediction score','Similarity','UMAP']
 DEV_MODE = True
 
 # on mac
-# num_rows = 2
+# NUM_ROWS = 2
 # num_cols = 4
 
 ##########################################################
@@ -121,7 +124,7 @@ class TableWidget(QTableWidget):
         self.num_rows = rows
         self.id = None
         self.setColumnCount(columns)
-        self.setRowCount(rows)        
+        self.setRowCount(rows)
         self.cellClicked.connect(self.onCellClicked)
 
     def populate_simulate(self, images, texts):
@@ -184,6 +187,10 @@ class TableWidget(QTableWidget):
              list_of_selected_cells.append( index.row()*self.num_cols + index.column() )
         return(list_of_selected_cells)
 
+    def set_number_of_rows(self,rows):
+        self.num_rows = rows
+        self.setRowCount(rows)
+
     @pyqtSlot(int, int)
     def onCellClicked(self, row, column):
         w = self.cellWidget(row, column)
@@ -233,7 +240,7 @@ class GalleryViewWidget(QFrame):
         self.btn_annotations = {}
         for key in ANNOTATIONS_DICT.keys():
             self.btn_annotations[key] = QPushButton(key)
-
+        
         vbox = QVBoxLayout()
         vbox.addWidget(self.tableWidget)
         grid = QGridLayout()
@@ -313,13 +320,13 @@ class GalleryViewWidget(QFrame):
         '''
         # convert to global id
         selected_image = self.image_id[selected_images[0]]
-        # find similar images
-        k = 10
-        print( 'finding ' + str(k) + ' images similar to ' + str(selected_image) )
+        print( 'finding images similar to ' + str(selected_image) )
+
+        # find similar images        
         if self.is_main_gallery:
-            images, indices, scores, distances, annotations = self.dataHandler.find_similar_images(selected_image,k)
+            images, indices, scores, distances, annotations = self.dataHandler.find_similar_images(selected_image)
         else:
-            images, indices, scores, distances, annotations = self.dataHandler2.find_similar_images(selected_image,k)
+            images, indices, scores, distances, annotations = self.dataHandler2.find_similar_images(selected_image)
         # emit the results
         self.signal_similaritySearch.emit(images,indices,scores,distances,annotations)
         self.signal_switchTab.emit()
@@ -343,6 +350,44 @@ class GalleryViewWidget(QFrame):
             # update for the full dataset
             self.dataHandler2.update_annotation(selected_images,annotation)
             self.signal_updatePage.emit()
+
+    def set_number_of_rows(self,rows):
+        self.tableWidget.set_number_of_rows(rows)
+        self.signal_updatePage.emit()
+
+
+class GalleryViewSettingsWidget(QFrame):
+
+    signal_numRowsPerPage = pyqtSignal(int)
+    signal_numImagesPerPage = pyqtSignal(int)
+    signal_k_similaritySearch = pyqtSignal(int)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setFrameStyle(QFrame.Panel | QFrame.Raised)
+
+        self.entry_num_rows_per_page = QSpinBox()
+        self.entry_num_rows_per_page.setMinimum(NUM_ROWS) 
+        self.entry_num_rows_per_page.setValue(NUM_ROWS)
+        self.entry_k_similarity_search = QSpinBox()
+        self.entry_k_similarity_search.setMinimum(1) 
+        self.entry_k_similarity_search.setValue(K_SIMILAR_DEFAULT)
+        
+        grid_settings = QGridLayout()
+        grid_settings.addWidget(QLabel('Number of rows per page'),0,0)
+        grid_settings.addWidget(self.entry_num_rows_per_page,0,1)
+        grid_settings.addWidget(QLabel('Number of images for similary search'),0,2)
+        grid_settings.addWidget(self.entry_k_similarity_search,0,3)
+
+        self.setLayout(grid_settings)
+
+        # connections
+        self.entry_num_rows_per_page.valueChanged.connect(self.update_num_rows_per_page)
+        self.entry_k_similarity_search.valueChanged.connect(self.signal_k_similaritySearch.emit)
+
+    def update_num_rows_per_page(self,rows):
+        self.signal_numImagesPerPage.emit(rows*num_cols) # to change to NUM_COLS
+        self.signal_numRowsPerPage.emit(rows)
 
 ###########################################################################################
 ##################################  Data Loader Widget  ###################################
@@ -422,6 +467,7 @@ class DataHandler(QObject):
     signal_sorting_method = pyqtSignal(str)
     signal_annotation_stats = pyqtSignal(np.ndarray)
     signal_predictions = pyqtSignal(np.ndarray,np.ndarray)
+    signal_distances = pyqtSignal(np.ndarray)
 
     def __init__(self,is_for_similarity_search=False):
         QObject.__init__(self)
@@ -438,6 +484,8 @@ class DataHandler(QObject):
         self.n_images_per_page = None
         self.spot_idx_sorted = None
 
+        self.k_similar = K_SIMILAR_DEFAULT
+
     def load_model(self,path):
         self.model = models.ResNet(model=model_spec['model'],n_channels=model_spec['n_channels'],n_filters=model_spec['n_filters'],
             n_classes=model_spec['n_classes'],kernel_size=model_spec['kernel_size'],stride=model_spec['stride'],padding=model_spec['padding'])
@@ -452,7 +500,6 @@ class DataHandler(QObject):
             self.signal_populate_page0.emit()
 
     def load_images(self,path):
-
         self.images = np.load(path)
         self.image_path = path
         
@@ -540,6 +587,9 @@ class DataHandler(QObject):
     def set_number_of_images_per_page(self,n):
         self.n_images_per_page = n
 
+    def set_k_similar(self,k):
+        self.k_similar = k
+
     def get_number_of_rows(self):
         return self.images.shape[0]
 
@@ -578,15 +628,17 @@ class DataHandler(QObject):
         self.signal_populate_page0.emit()
         self.signal_sorting_method.emit(criterion)
 
-    def find_similar_images(self,idx,k=200):
-        self.neigh.set_params(n_neighbors=k+1)
+    def find_similar_images(self,idx):
+        self.neigh.set_params(n_neighbors=min(self.k_similar+1,len(self.embeddings)))
         distances, indices = self.neigh.kneighbors(self.embeddings[idx,].reshape(1, -1), return_distance=True)
         distances = distances.squeeze()
+        self.signal_distances.emit(distances)
         indices = indices.squeeze()
         images = self.images[indices,]
         scores = self.data_pd.loc[indices]['output'].to_numpy() # use the presorting idx
         annotations = self.data_pd.loc[indices]['annotation'].to_numpy() # use the presorting idx
-        return images[1:,], indices[1:], scores[1:], distances[1:], annotations[1:]
+        # return images[1:,], indices[1:], scores[1:], distances[1:], annotations[1:]
+        return images, indices, scores, distances, annotations
 
     def populate_similarity_search(self,images,indices,scores,distances,annotations):
         self.images = images
@@ -705,6 +757,9 @@ class BarPlotWidget(QWidget):
         self._update_plot()
 
 class HistogramPlotWidget(QWidget):
+
+    signal_bringToFront = pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         #  create widgets
@@ -728,10 +783,41 @@ class HistogramPlotWidget(QWidget):
                 x = self.score[self.annotation==label]
                 self.axes.hist(x,bins=50,range=(0,1),color=COLOR_DICT_PLOT[label])
             self.view.draw()
+            self.signal_bringToFront.emit()
 
     def update_plot(self,score,annotation):
         self.score = score
         self.annotation = annotation
+        self._update_plot()
+
+class StemPlotWidget(QWidget):
+
+    signal_bringToFront = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        #  create widgets
+        self.view = FigureCanvas(Figure(figsize=(5, 3)))
+        self.axes = self.view.figure.subplots()
+
+        self.values = None
+
+        #  Create layout
+        vlayout = QVBoxLayout()
+        vlayout.addWidget(self.view)
+        self.setLayout(vlayout)
+
+        self._update_plot()
+
+    def _update_plot(self):
+        if self.values is not None:
+            self.axes.clear()
+            self.axes.stem(self.values)
+            self.view.draw()
+            self.signal_bringToFront.emit()
+
+    def update_plot(self,values):
+        self.values = values
         self._update_plot()
 
 ###########################################################################################
@@ -744,21 +830,22 @@ class MainWindow(QMainWindow):
 
         # core
         self.dataHandler = DataHandler()
-        self.dataHandler.set_number_of_images_per_page(num_rows*num_cols)
+        self.dataHandler.set_number_of_images_per_page(NUM_ROWS*num_cols)
 
         self.dataHandler_similarity = DataHandler(is_for_similarity_search=True)
-        self.dataHandler_similarity.set_number_of_images_per_page(num_rows*num_cols)
+        self.dataHandler_similarity.set_number_of_images_per_page(NUM_ROWS*num_cols)
 
         # widgets
         self.dataLoaderWidget = DataLoaderWidget(self.dataHandler)
-        self.gallery = GalleryViewWidget(num_rows,num_cols,self.dataHandler,is_main_gallery=True)
-        self.gallery_similarity = GalleryViewWidget(num_rows,num_cols,self.dataHandler_similarity,dataHandler2=self.dataHandler)
+        self.gallery = GalleryViewWidget(NUM_ROWS,num_cols,self.dataHandler,is_main_gallery=True)
+        self.gallery_similarity = GalleryViewWidget(NUM_ROWS,num_cols,self.dataHandler_similarity,dataHandler2=self.dataHandler)
+        self.gallerySettings = GalleryViewSettingsWidget()
 
         self.plots = {}
         self.plots['Labels'] = PiePlotWidget()
         self.plots['Annotation Progress'] = BarPlotWidget()
         self.plots['Inference Result'] = HistogramPlotWidget()
-        self.plots['Similarity'] = QWidget()
+        self.plots['Similarity'] = StemPlotWidget()
 
         # tab widget
         self.gallery_tab = QTabWidget()
@@ -767,7 +854,7 @@ class MainWindow(QMainWindow):
 
         layout = QVBoxLayout()
         layout.addWidget(self.dataLoaderWidget)
-        # layout.addWidget(self.gallery)
+        layout.addWidget(self.gallerySettings)
         layout.addWidget(self.gallery_tab)
 
         # # plots
@@ -810,9 +897,20 @@ class MainWindow(QMainWindow):
         self.gallery_similarity.signal_similaritySearch.connect(self.dataHandler_similarity.populate_similarity_search)
         self.gallery_similarity.signal_updatePage.connect(self.gallery.update_page)
 
+        self.gallerySettings.signal_numRowsPerPage.connect(self.gallery.set_number_of_rows)
+        self.gallerySettings.signal_numImagesPerPage.connect(self.dataHandler.set_number_of_images_per_page)
+        self.gallerySettings.signal_k_similaritySearch.connect(self.dataHandler.set_k_similar)
+        self.gallerySettings.signal_numImagesPerPage.connect(self.dataHandler_similarity.set_number_of_images_per_page)
+        self.gallerySettings.signal_numRowsPerPage.connect(self.gallery_similarity.set_number_of_rows)
+        self.gallerySettings.signal_k_similaritySearch.connect(self.dataHandler_similarity.set_k_similar)
+
         self.dataHandler.signal_annotation_stats.connect(self.plots['Labels'].update_plot)
         self.dataHandler.signal_annotation_stats.connect(self.plots['Annotation Progress'].update_plot)
         self.dataHandler.signal_predictions.connect(self.plots['Inference Result'].update_plot)
+        self.dataHandler.signal_distances.connect(self.plots['Similarity'].update_plot)
+
+        self.plots['Similarity'].signal_bringToFront.connect(dock_plots['Similarity'].raiseDock)
+        self.plots['Inference Result'].signal_bringToFront.connect(dock_plots['Inference Result'].raiseDock)
 
         # dev mode
         if DEV_MODE:
