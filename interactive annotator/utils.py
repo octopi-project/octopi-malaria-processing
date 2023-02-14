@@ -41,6 +41,7 @@ def generate_predictions_and_features(model,images,batch_size):
 
     print('running inference on ' + str(predictions.shape[0]) + 'images took ' + str(time.time()-t0) + ' s')
 
+    '''
     # Plot
     print(predictions.shape)
     import matplotlib.pyplot as plt
@@ -50,5 +51,6 @@ def generate_predictions_and_features(model,images,batch_size):
     plt.ylabel('Count')
     plt.title('Histogram of Outputs')
     plt.savefig('histograms_' + str(0)  + '.png', dpi=300)
+    '''
 
     return predictions, features
