@@ -21,6 +21,8 @@ from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT
+from mpl_interactions import ioff, panhandler, zoom_factory
+from utils_plot import *
 
 ##########################################################
 ################  Default configurations  ################
@@ -820,6 +822,55 @@ class StemPlotWidget(QWidget):
         self.values = values
         self._update_plot()
 
+
+class ScatterPlotWidget(QWidget):
+
+    signal_bringToFront = pyqtSignal()
+    signal_selected_points = pyqtSignal(np.ndarray)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        #  create widgets
+        self.view = FigureCanvas(Figure(figsize=(5, 3)))
+        with plt.ioff():
+            self.axes = self.view.figure.subplots()
+
+        self.x = None
+        self.y = None
+        self.annotation = None
+        self.selector = None
+
+        #  Create layout
+        vlayout = QVBoxLayout()
+        vlayout.addWidget(self.view)
+        self.setLayout(vlayout)
+
+        self.x = np.random.rand(100, 1)
+        self.y = np.random.rand(100, 1)
+        self._update_plot()
+
+    def _update_plot(self):
+        if self.x is not None:
+            self.axes.clear()
+            pts = self.axes.scatter(self.x,self.y)
+            zoom_factory(self.axes)
+            self.selector = SelectFromCollection(self.axes, pts)
+            self.selector.set_callback(self.on_select)
+            self.view.draw()
+            self.signal_bringToFront.emit()
+
+    def update_plot(self,x,y,annotations):
+        self.x = x
+        self.y = y
+        self.annotation = annotation
+        self._update_plot()
+
+    def on_select(self,selector):
+        selected_points = selector.get_selection()
+        print(selected_points)
+        self.signal_selected_points.emit(selected_points)
+
 ###########################################################################################
 #####################################  Main Window  #######################################
 ###########################################################################################
@@ -846,6 +897,7 @@ class MainWindow(QMainWindow):
         self.plots['Annotation Progress'] = BarPlotWidget()
         self.plots['Inference Result'] = HistogramPlotWidget()
         self.plots['Similarity'] = StemPlotWidget()
+        self.plots['UMAP'] = ScatterPlotWidget()
 
         # tab widget
         self.gallery_tab = QTabWidget()
@@ -875,6 +927,7 @@ class MainWindow(QMainWindow):
         dock_plots['Labels'].raiseDock()
         main_dockArea.addDock(dock_plots['Inference Result'],'bottom',relativeTo=dock_plots['Labels'])
         main_dockArea.addDock(dock_plots['Similarity'],'below',relativeTo=dock_plots['Inference Result'])
+        main_dockArea.addDock(dock_plots['UMAP'],'below',relativeTo=dock_plots['Similarity'])
         dock_plots['Inference Result'].raiseDock() # bring some to the front
         
         self.setCentralWidget(main_dockArea)
