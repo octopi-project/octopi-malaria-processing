@@ -459,6 +459,42 @@ class DataLoaderWidget(QFrame):
                 self.dataHandler.load_model(filename)
 
 ###########################################################################################
+##########################  Training and Visualization Widget  ############################
+###########################################################################################
+
+class TrainingAndVisualizationWidget(QFrame):
+
+    def __init__(self):
+
+        super().__init__()
+        self.setFrameStyle(QFrame.Panel | QFrame.Raised)
+
+        self.btn_open_model_training = QPushButton("Open Model Training Dialog")
+        self.label_model = QLabel()
+        self.label_model.setMinimumWidth(100)
+        self.label_model.setFrameStyle(QFrame.Panel | QFrame.Sunken)
+        self.max_points_label = QLabel("Max number of points for UMAP")
+        self.entry_max_n_for_umap = QSpinBox()
+        self.entry_max_n_for_umap.setMinimum(1000)
+        self.entry_max_n_for_umap.setMaximum(1000000)
+        self.entry_max_n_for_umap.setSingleStep(1000)
+        self.entry_max_n_for_umap.setValue(1000)
+        self.btn_generate_umap_visualization = QPushButton("Generate UMAP Visualization")
+        
+        # Create the layout
+        layout = QHBoxLayout()
+        layout.addWidget(self.btn_open_model_training)
+        # layout.addWidget(QLabel('Model'))
+        layout.addWidget(self.label_model)
+        layout.addStretch()
+        layout.addWidget(QLabel('Max n for UMAP'))
+        layout.addWidget(self.entry_max_n_for_umap)
+        layout.addWidget(self.btn_generate_umap_visualization)
+        
+        self.setLayout(layout)
+
+
+###########################################################################################
 #####################################  Data Handaler  #####################################
 ###########################################################################################
 
@@ -896,6 +932,7 @@ class MainWindow(QMainWindow):
         self.gallery = GalleryViewWidget(NUM_ROWS,num_cols,self.dataHandler,is_main_gallery=True)
         self.gallery_similarity = GalleryViewWidget(NUM_ROWS,num_cols,self.dataHandler_similarity,dataHandler2=self.dataHandler)
         self.gallerySettings = GalleryViewSettingsWidget()
+        self.trainingAndVisualizationWidget = TrainingAndVisualizationWidget()
 
         self.plots = {}
         self.plots['Labels'] = PiePlotWidget()
@@ -913,6 +950,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.dataLoaderWidget)
         layout.addWidget(self.gallerySettings)
         layout.addWidget(self.gallery_tab)
+        layout.addWidget(self.trainingAndVisualizationWidget)
 
         # # plots
         centralWidget = QWidget()
