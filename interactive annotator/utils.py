@@ -39,7 +39,7 @@ def generate_predictions_and_features(model,images,batch_size):
     predictions = np.vstack(all_predictions)
     features = np.vstack(all_features)
 
-    print('running inference on ' + str(predictions.shape[0]) + 'images took ' + str(time.time()-t0) + ' s')
+    print('running inference on ' + str(predictions.shape[0]) + ' images took ' + str(time.time()-t0) + ' s')
 
     '''
     # Plot
