@@ -5,6 +5,7 @@ from PyQt5 import QtCore
 import pyqtgraph.dockarea as dock
 import pyqtgraph as pg
 import os
+import time
 from datetime import datetime
 import numpy as np
 import pandas as pd
@@ -14,6 +15,7 @@ import torch
 import functools
 import operator
 from sklearn.neighbors import KNeighborsClassifier
+import umap
 import models
 import utils
 
@@ -464,10 +466,11 @@ class DataLoaderWidget(QFrame):
 
 class TrainingAndVisualizationWidget(QFrame):
 
-    def __init__(self):
+    def __init__(self, dataHandler):
 
         super().__init__()
         self.setFrameStyle(QFrame.Panel | QFrame.Raised)
+        self.dataHandler = dataHandler
 
         self.btn_open_model_training = QPushButton("Open Model Training Dialog")
         self.label_model = QLabel()
@@ -493,6 +496,11 @@ class TrainingAndVisualizationWidget(QFrame):
         
         self.setLayout(layout)
 
+        # connections
+        self.btn_generate_umap_visualization.clicked.connect(self.generate_UMAP_visualization)
+
+    def generate_UMAP_visualization(self):
+        self.dataHandler.generate_UMAP_visualization(self.entry_max_n_for_umap.value())
 
 ###########################################################################################
 #####################################  Data Handaler  #####################################
@@ -506,6 +514,7 @@ class DataHandler(QObject):
     signal_annotation_stats = pyqtSignal(np.ndarray)
     signal_predictions = pyqtSignal(np.ndarray,np.ndarray)
     signal_distances = pyqtSignal(np.ndarray)
+    signal_UMAP_visualizations = pyqtSignal(np.ndarray,np.ndarray,np.ndarray)
 
     def __init__(self,is_for_similarity_search=False):
         QObject.__init__(self)
@@ -718,6 +727,17 @@ class DataHandler(QObject):
             if os.path.exists(tmp_file):
                 os.remove(tmp_file)
 
+    def generate_UMAP_visualization(self,n_max):
+        reducer = umap.UMAP(n_components=2)
+        # sampling
+        indices = np.random.choice(len(self.embeddings), min(len(self.embeddings),n_max), replace=False)
+        # fit and transform
+        t0 = time.time()
+        umap_embedding = reducer.fit_transform(self.embeddings[indices,])
+        print('generating UMAP for ' + str(len(indices)) + ' data points took ' + str(time.time()-t0) + ' seconds')
+        # send the result to display
+        annotations = self.data_pd.loc[indices]['annotation'].to_numpy() # use the presorting idx
+        self.signal_UMAP_visualizations.emit(umap_embedding[:,0],umap_embedding[:,1],annotations)
 
 ###########################################################################################
 #####################################  Matplotlib   #######################################
@@ -901,7 +921,7 @@ class ScatterPlotWidget(QWidget):
             self.view.draw()
             self.signal_bringToFront.emit()
 
-    def update_plot(self,x,y,annotations):
+    def update_plot(self,x,y,annotation):
         self.x = x
         self.y = y
         self.annotation = annotation
@@ -909,7 +929,7 @@ class ScatterPlotWidget(QWidget):
 
     def on_select(self,selector):
         selected_points = selector.get_selection()
-        print(selected_points)
+        # print(selected_points)
         self.signal_selected_points.emit(selected_points)
 
 ###########################################################################################
@@ -932,7 +952,7 @@ class MainWindow(QMainWindow):
         self.gallery = GalleryViewWidget(NUM_ROWS,num_cols,self.dataHandler,is_main_gallery=True)
         self.gallery_similarity = GalleryViewWidget(NUM_ROWS,num_cols,self.dataHandler_similarity,dataHandler2=self.dataHandler)
         self.gallerySettings = GalleryViewSettingsWidget()
-        self.trainingAndVisualizationWidget = TrainingAndVisualizationWidget()
+        self.trainingAndVisualizationWidget = TrainingAndVisualizationWidget(self.dataHandler)
 
         self.plots = {}
         self.plots['Labels'] = PiePlotWidget()
@@ -1004,9 +1024,11 @@ class MainWindow(QMainWindow):
         self.dataHandler.signal_annotation_stats.connect(self.plots['Annotation Progress'].update_plot)
         self.dataHandler.signal_predictions.connect(self.plots['Inference Result'].update_plot)
         self.dataHandler.signal_distances.connect(self.plots['Similarity'].update_plot)
+        self.dataHandler.signal_UMAP_visualizations.connect(self.plots['UMAP'].update_plot)
 
         self.plots['Similarity'].signal_bringToFront.connect(dock_plots['Similarity'].raiseDock)
         self.plots['Inference Result'].signal_bringToFront.connect(dock_plots['Inference Result'].raiseDock)
+        self.plots['UMAP'].signal_bringToFront.connect(dock_plots['UMAP'].raiseDock)
 
         # dev mode
         if DEV_MODE:
