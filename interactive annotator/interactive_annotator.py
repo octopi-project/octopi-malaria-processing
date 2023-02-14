@@ -121,6 +121,9 @@ class CustomWidget(QWidget):
         self.initUi()
 
 class TableWidget(QTableWidget):
+
+    # signal_selected_cells = pyqtSignal(list)
+
     def __init__(self, rows = 10, columns = 10, parent=None):
         QTableWidget.__init__(self, parent)
         self.parent = parent
@@ -130,6 +133,7 @@ class TableWidget(QTableWidget):
         self.setColumnCount(columns)
         self.setRowCount(rows)
         self.cellClicked.connect(self.onCellClicked)
+        # self.itemSelectionChanged.connect(self.onItemSelectionChanged)
 
     def populate_simulate(self, images, texts):
         for i in range(self.rowCount()):
@@ -202,6 +206,11 @@ class TableWidget(QTableWidget):
             idx = row*self.num_cols + column
             print(str(self.id[idx]) + ' - ' + w.text)
 
+    # @pyqtSlot()
+    # def onItemSelectionChanged(self):
+    #     selected_cells = self.get_selected_cells()
+    #     self.signal_selected_cells.emit(selected_cells)
+
 ###########################################################################################
 #####################################  Gallery View  ######################################
 ###########################################################################################
@@ -211,8 +220,10 @@ class GalleryViewWidget(QFrame):
     signal_switchTab = pyqtSignal()
     signal_similaritySearch = pyqtSignal(np.ndarray,np.ndarray,np.ndarray,np.ndarray,np.ndarray)
     signal_updatePage = pyqtSignal() # for updating the current page in other galleries
+    signal_selected_images_idx_for_umap = pyqtSignal(list)
+    signal_selection_cleared = pyqtSignal()
 
-    def __init__(self, rows = 10, columns = 10, dataHandler=None, dataHandler2=None, is_main_gallery=False, parent=None, *args, **kwargs):
+    def __init__(self, rows = 10, columns = 10, dataHandler=None, dataHandler2=None, is_main_gallery=False, is_for_similarity_search=False, parent=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.dataHandler = dataHandler
         self.dataHandler2 = dataHandler2 # secondary datahandler (in the similarity search gallery, this is linked to the full data)
@@ -220,6 +231,7 @@ class GalleryViewWidget(QFrame):
         self.image_id = None # for storing the ID of currently displayed images
 
         self.tableWidget = TableWidget(rows,columns,parent=self)
+        self.tableWidget.itemSelectionChanged.connect(self.onSelectionChanged)
 
         # page navigation
         self.slider = QSlider(Qt.Horizontal)
@@ -233,9 +245,10 @@ class GalleryViewWidget(QFrame):
         self.entry.setValue(0)
 
         self.btn_search = QPushButton('Search Similar Images')
+        self.btn_show_on_UMAP = QPushButton('Show on UMAP')
         self.dropdown_sort = QComboBox()
         self.dropdown_sort.addItems(['Sort by prediction score','Sort by labels'])
-        if self.is_main_gallery == False:
+        if is_for_similarity_search:
             self.dropdown_sort.insertItem(0,'Sort by similarity')
             self.dropdown_sort.blockSignals(True)
             self.dropdown_sort.setCurrentIndex(0)
@@ -255,8 +268,9 @@ class GalleryViewWidget(QFrame):
         # grid.addWidget(self.entry,0,0)
         # grid.addWidget(self.slider,0,1)
         # if self.is_main_gallery:
-        grid.addWidget(self.btn_search,2,0,1,len(ANNOTATIONS_DICT))
-        grid.addWidget(self.dropdown_sort,3,0,1,len(ANNOTATIONS_DICT))
+        grid.addWidget(self.btn_search,3,0,1,len(ANNOTATIONS_DICT)-1)
+        grid.addWidget(self.btn_show_on_UMAP,3,len(ANNOTATIONS_DICT)-1,1,1)
+        grid.addWidget(self.dropdown_sort,2,0,1,len(ANNOTATIONS_DICT))
         i = 0
         for key in ANNOTATIONS_DICT.keys():
             grid.addWidget(self.btn_annotations[key],4,i)
@@ -273,6 +287,7 @@ class GalleryViewWidget(QFrame):
         self.dataHandler.signal_sorting_method.connect(self.update_displayed_sorting_method)
         for key in ANNOTATIONS_DICT.keys():
             self.btn_annotations[key].clicked.connect(functools.partial(self.assign_annotations,ANNOTATIONS_DICT[key]))
+        self.btn_show_on_UMAP.clicked.connect(self.show_on_UMAP)
 
     def update_page(self):
         # clear selections
@@ -347,7 +362,7 @@ class GalleryViewWidget(QFrame):
         if len(selected_images) == 0:
             return
         selected_images = operator.itemgetter(*selected_images)(self.image_id) # selected_images = [self.image_id[i] for i in selected_images]
-        print('lable ' + str(selected_images) + ' as ' + str(annotation))
+        print('label ' + str(selected_images) + ' as ' + str(annotation))
         self.dataHandler.update_annotation(selected_images,annotation)
         self.update_page()
         if self.is_main_gallery == False:
@@ -359,6 +374,43 @@ class GalleryViewWidget(QFrame):
         self.tableWidget.set_number_of_rows(rows)
         self.signal_updatePage.emit()
 
+    @pyqtSlot()
+    def show_on_UMAP(self):
+
+        # ensure UMAP fit has been done
+        if self.is_main_gallery:
+            model_loaded = self.dataHandler.reducer is not None
+        else:
+            model_loaded = self.dataHandler2.reducer is not None
+        if model_loaded == False:
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Information)
+            msg.setText("Generate UMAP first")
+            msg.exec_()
+            return
+
+        if self.image_id is not None:
+            selected_images = self.tableWidget.get_selected_cells() # index in the current page
+            if len(selected_images) > 0:
+                selected_images = [i for i in selected_images if i < len(self.image_id)] # filter it 
+                selected_images = operator.itemgetter(*selected_images)(self.image_id) # selected_images = [self.image_id[i] for i in selected_images]
+                selected_images = [selected_images] if not isinstance(selected_images, tuple) else list(selected_images)
+                self.signal_selected_images_idx_for_umap.emit(selected_images)
+
+    @pyqtSlot()
+    def onSelectionChanged(self):
+        if self.image_id is not None:
+            selected_images = self.tableWidget.get_selected_cells() # index in the current page
+            '''
+            # UMAP transform is too slow - almost 1 s on Mac - use button instead
+            selected_images = [i for i in selected_images if i < len(self.image_id)] # filter it 
+            selected_images = operator.itemgetter(*selected_images)(self.image_id) # selected_images = [self.image_id[i] for i in selected_images]
+            selected_images = [selected_images] if not isinstance(selected_images, tuple) else list(selected_images)
+            if len(selected_images) > 0:
+                self.signal_selected_images_idx_for_umap.emit(selected_images)
+            '''
+            if len(selected_images) == 0:
+                self.signal_selection_cleared.emit()
 
 class GalleryViewSettingsWidget(QFrame):
 
@@ -515,7 +567,8 @@ class DataHandler(QObject):
     signal_predictions = pyqtSignal(np.ndarray,np.ndarray)
     signal_distances = pyqtSignal(np.ndarray)
     signal_UMAP_visualizations = pyqtSignal(np.ndarray,np.ndarray,np.ndarray) # to UMAP scatter plot
-    signal_selected_images = pyqtSignal(np.ndarray,np.ndarray,np.ndarray,np.ndarray)
+    signal_selected_images = pyqtSignal(np.ndarray,np.ndarray,np.ndarray,np.ndarray) # to selected images data handler
+    signal_umap_embedding = pyqtSignal(np.ndarray,np.ndarray)
 
     def __init__(self,is_for_similarity_search=False,is_for_selected_images=False):
         QObject.__init__(self)
@@ -534,6 +587,8 @@ class DataHandler(QObject):
         self.spot_idx_sorted = None
 
         self.k_similar = K_SIMILAR_DEFAULT
+
+        self.reducer = None # UMAP
 
     def load_model(self,path):
         self.model = models.ResNet(model=model_spec['model'],n_channels=model_spec['n_channels'],n_filters=model_spec['n_filters'],
@@ -749,16 +804,21 @@ class DataHandler(QObject):
                 os.remove(tmp_file)
 
     def generate_UMAP_visualization(self,n_max):
-        reducer = umap.UMAP(n_components=2)
+        self.reducer = umap.UMAP(n_components=2)
         # sampling
         indices = np.random.choice(len(self.embeddings), min(len(self.embeddings),n_max), replace=False)
         # fit and transform
         t0 = time.time()
-        umap_embedding = reducer.fit_transform(self.embeddings[indices,])
+        umap_embedding = self.reducer.fit_transform(self.embeddings[indices,])
         print('generating UMAP for ' + str(len(indices)) + ' data points took ' + str(time.time()-t0) + ' seconds')
         # send the result to display
         annotations = self.data_pd.loc[indices]['annotation'].to_numpy() # use the presorting idx
         self.signal_UMAP_visualizations.emit(umap_embedding[:,0],umap_embedding[:,1],annotations)
+
+    def to_umap_embedding(self,index):
+        if self.embeddings is not None and self.reducer is not None:
+            umap_embeddings = self.reducer.transform(self.embeddings[index,])
+            self.signal_umap_embedding.emit(umap_embeddings[:,0],umap_embeddings[:,1])
 
 
 ###########################################################################################
@@ -920,6 +980,8 @@ class ScatterPlotWidget(QWidget):
         self.annotation = None
         self.selector = None
 
+        self.scatter_overlay = None
+
         #  Create layout
         vlayout = QVBoxLayout()
         vlayout.addWidget(self.view)
@@ -955,6 +1017,20 @@ class ScatterPlotWidget(QWidget):
         # print(selected_points)
         self.signal_selected_points.emit(selected_points)
 
+    def show_points(self,x,y):
+        if self.scatter_overlay:
+            try:
+                self.scatter_overlay.remove()
+            except:
+                pass
+        self.scatter_overlay = self.axes.scatter(x,y,c='#ff7f0e')
+        self.view.draw()
+
+    def clear_overlay(self):
+        if self.scatter_overlay:
+            self.scatter_overlay.remove()
+            self.view.draw()
+
 ###########################################################################################
 #####################################  Main Window  #######################################
 ###########################################################################################
@@ -976,7 +1052,7 @@ class MainWindow(QMainWindow):
         # widgets
         self.dataLoaderWidget = DataLoaderWidget(self.dataHandler)
         self.gallery = GalleryViewWidget(NUM_ROWS,num_cols,self.dataHandler,is_main_gallery=True)
-        self.gallery_similarity = GalleryViewWidget(NUM_ROWS,num_cols,self.dataHandler_similarity,dataHandler2=self.dataHandler)
+        self.gallery_similarity = GalleryViewWidget(NUM_ROWS,num_cols,self.dataHandler_similarity,dataHandler2=self.dataHandler,is_for_similarity_search=True)
         self.gallery_umap_selection = GalleryViewWidget(NUM_ROWS,num_cols,self.dataHandler_umap_selection,dataHandler2=self.dataHandler)
         self.gallerySettings = GalleryViewSettingsWidget()
         self.trainingAndVisualizationWidget = TrainingAndVisualizationWidget(self.dataHandler)
@@ -992,7 +1068,7 @@ class MainWindow(QMainWindow):
         self.gallery_tab = QTabWidget()
         self.gallery_tab.addTab(self.gallery,'Full Dataset')
         self.gallery_tab.addTab(self.gallery_similarity,'Similarity Search')
-        self.gallery_tab.addTab(self.gallery_umap_selection,'Selected Images from UMAP')
+        self.gallery_tab.addTab(self.gallery_umap_selection,'UMAP Selection')
 
         layout = QVBoxLayout()
         layout.addWidget(self.dataLoaderWidget)
@@ -1054,6 +1130,18 @@ class MainWindow(QMainWindow):
         # get selected images in UMAP scatter plot
         self.plots['UMAP'].signal_selected_points.connect(self.dataHandler.prepare_selected_images)
         self.dataHandler.signal_selected_images.connect(self.dataHandler_umap_selection.populate_selected_images)
+
+        # show selected images in UMAP
+        self.gallery.signal_selected_images_idx_for_umap.connect(self.dataHandler.to_umap_embedding)
+        self.gallery_similarity.signal_selected_images_idx_for_umap.connect(self.dataHandler.to_umap_embedding)
+        self.gallery_umap_selection.signal_selected_images_idx_for_umap.connect(self.dataHandler.to_umap_embedding)
+
+        self.dataHandler.signal_umap_embedding.connect(self.plots['UMAP'].show_points)
+
+        # clear the overlay when images are de-selected
+        self.gallery.signal_selection_cleared.connect(self.plots['UMAP'].clear_overlay)
+        self.gallery_similarity.signal_selection_cleared.connect(self.plots['UMAP'].clear_overlay)
+        self.gallery_umap_selection.signal_selection_cleared.connect(self.plots['UMAP'].clear_overlay)
 
         # gallery settings
         self.gallerySettings.signal_numRowsPerPage.connect(self.gallery.set_number_of_rows)
