@@ -210,7 +210,7 @@ class GalleryViewWidget(QFrame):
 
     signal_switchTab = pyqtSignal()
     signal_similaritySearch = pyqtSignal(np.ndarray,np.ndarray,np.ndarray,np.ndarray,np.ndarray)
-    signal_updatePage = pyqtSignal()
+    signal_updatePage = pyqtSignal() # for updating the current page in other galleries
 
     def __init__(self, rows = 10, columns = 10, dataHandler=None, dataHandler2=None, is_main_gallery=False, parent=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -514,11 +514,13 @@ class DataHandler(QObject):
     signal_annotation_stats = pyqtSignal(np.ndarray)
     signal_predictions = pyqtSignal(np.ndarray,np.ndarray)
     signal_distances = pyqtSignal(np.ndarray)
-    signal_UMAP_visualizations = pyqtSignal(np.ndarray,np.ndarray,np.ndarray)
+    signal_UMAP_visualizations = pyqtSignal(np.ndarray,np.ndarray,np.ndarray) # to UMAP scatter plot
+    signal_selected_images = pyqtSignal(np.ndarray,np.ndarray,np.ndarray,np.ndarray)
 
-    def __init__(self,is_for_similarity_search=False):
+    def __init__(self,is_for_similarity_search=False,is_for_selected_images=False):
         QObject.__init__(self)
         self.is_for_similarity_search = is_for_similarity_search
+        self.is_for_selected_images = is_for_selected_images
         self.images = None
         self.image_path = None
         self.data_pd = None
@@ -668,7 +670,7 @@ class DataHandler(QObject):
             self.data_pd = self.data_pd.sort_values('distance',ascending=True)
         
         # update the sorted spot idx
-        if self.is_for_similarity_search:
+        if self.is_for_similarity_search or self.is_for_selected_images:
             self.spot_idx_sorted = self.data_pd['idx_local'].to_numpy().astype(int)
         else:
             self.spot_idx_sorted = self.data_pd.index.to_numpy().astype(int)
@@ -699,11 +701,30 @@ class DataHandler(QObject):
         self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
         self.signal_populate_page0.emit()
 
+    def prepare_selected_images(self,indices):
+        images = self.images[indices,]
+        scores = self.data_pd.loc[indices]['output'].to_numpy() # use the presorting idx
+        annotations = self.data_pd.loc[indices]['annotation'].to_numpy() # use the presorting idx
+        # emit the results
+        self.signal_selected_images.emit(images,indices,scores,annotations)
+
+    def populate_selected_images(self,images,indices,scores,annotations):
+        self.images = images
+        self.data_pd = pd.DataFrame({'idx_global':indices,'idx_local':np.arange(self.images.shape[0]).astype(int),'output':scores, 'annotation':annotations},index=indices) # idx_local for indexing the spot images
+        self.data_pd = self.data_pd.set_index('idx_global')
+        print('populated data_pd of the selected images data handler:')
+        print(self.data_pd)
+        self.images_loaded = True
+        # self.spot_idx_sorted = self.data_pd['index'].to_numpy().astype(int)
+        self.spot_idx_sorted = np.arange(self.images.shape[0]).astype(int)
+        self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
+        self.signal_populate_page0.emit()
+
     def update_annotation(self,index,annotation):
         # condition = df['index'].isin(index), df.loc[condition, 'annotation'] = annotation 
         # to-do: support dealing with multiple datasets using multi-level indexing
         self.data_pd.loc[index,'annotation'] = annotation
-        if self.is_for_similarity_search:
+        if self.is_for_similarity_search or self.is_for_selected_images:
             print(self.data_pd)
         self.update_annotation_stats() # note - can also do it increamentally instead of going through the full df everytime
 
@@ -739,9 +760,11 @@ class DataHandler(QObject):
         annotations = self.data_pd.loc[indices]['annotation'].to_numpy() # use the presorting idx
         self.signal_UMAP_visualizations.emit(umap_embedding[:,0],umap_embedding[:,1],annotations)
 
+
 ###########################################################################################
 #####################################  Matplotlib   #######################################
 ###########################################################################################
+
 class PiePlotWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -947,10 +970,14 @@ class MainWindow(QMainWindow):
         self.dataHandler_similarity = DataHandler(is_for_similarity_search=True)
         self.dataHandler_similarity.set_number_of_images_per_page(NUM_ROWS*num_cols)
 
+        self.dataHandler_umap_selection = DataHandler(is_for_selected_images=True)
+        self.dataHandler_umap_selection.set_number_of_images_per_page(NUM_ROWS*num_cols)
+
         # widgets
         self.dataLoaderWidget = DataLoaderWidget(self.dataHandler)
         self.gallery = GalleryViewWidget(NUM_ROWS,num_cols,self.dataHandler,is_main_gallery=True)
         self.gallery_similarity = GalleryViewWidget(NUM_ROWS,num_cols,self.dataHandler_similarity,dataHandler2=self.dataHandler)
+        self.gallery_umap_selection = GalleryViewWidget(NUM_ROWS,num_cols,self.dataHandler_umap_selection,dataHandler2=self.dataHandler)
         self.gallerySettings = GalleryViewSettingsWidget()
         self.trainingAndVisualizationWidget = TrainingAndVisualizationWidget(self.dataHandler)
 
@@ -965,6 +992,7 @@ class MainWindow(QMainWindow):
         self.gallery_tab = QTabWidget()
         self.gallery_tab.addTab(self.gallery,'Full Dataset')
         self.gallery_tab.addTab(self.gallery_similarity,'Similarity Search')
+        self.gallery_tab.addTab(self.gallery_umap_selection,'Selected Images from UMAP')
 
         layout = QVBoxLayout()
         layout.addWidget(self.dataLoaderWidget)
@@ -1007,25 +1035,47 @@ class MainWindow(QMainWindow):
         self.dataHandler_similarity.signal_set_total_page_count.connect(self.gallery_similarity.set_total_pages)
         self.dataHandler_similarity.signal_populate_page0.connect(self.gallery_similarity.populate_page0)
 
+        self.dataHandler_umap_selection.signal_set_total_page_count.connect(self.gallery_umap_selection.set_total_pages)
+        self.dataHandler_umap_selection.signal_populate_page0.connect(self.gallery_umap_selection.populate_page0)
+        self.dataHandler_umap_selection.signal_populate_page0.connect(self.switch_tab2) # bring the current tab to the front
+
+        # similarity search
         self.gallery.signal_similaritySearch.connect(self.dataHandler_similarity.populate_similarity_search)
         self.gallery.signal_switchTab.connect(self.switch_tab)
+        # signal_updatePage will only be emitted by non-main galleries - (annotating in other galleries will not change the displayed annotations in the current page of the main gallery) 
 
         self.gallery_similarity.signal_similaritySearch.connect(self.dataHandler_similarity.populate_similarity_search)
         self.gallery_similarity.signal_updatePage.connect(self.gallery.update_page)
 
+        self.gallery_umap_selection.signal_similaritySearch.connect(self.dataHandler_similarity.populate_similarity_search)
+        self.gallery_umap_selection.signal_updatePage.connect(self.gallery.update_page)
+        self.gallery_umap_selection.signal_switchTab.connect(self.switch_tab)
+
+        # get selected images in UMAP scatter plot
+        self.plots['UMAP'].signal_selected_points.connect(self.dataHandler.prepare_selected_images)
+        self.dataHandler.signal_selected_images.connect(self.dataHandler_umap_selection.populate_selected_images)
+
+        # gallery settings
         self.gallerySettings.signal_numRowsPerPage.connect(self.gallery.set_number_of_rows)
         self.gallerySettings.signal_numImagesPerPage.connect(self.dataHandler.set_number_of_images_per_page)
         self.gallerySettings.signal_k_similaritySearch.connect(self.dataHandler.set_k_similar)
+        
         self.gallerySettings.signal_numImagesPerPage.connect(self.dataHandler_similarity.set_number_of_images_per_page)
         self.gallerySettings.signal_numRowsPerPage.connect(self.gallery_similarity.set_number_of_rows)
         self.gallerySettings.signal_k_similaritySearch.connect(self.dataHandler_similarity.set_k_similar)
 
+        self.gallerySettings.signal_numImagesPerPage.connect(self.dataHandler_umap_selection.set_number_of_images_per_page)
+        self.gallerySettings.signal_numRowsPerPage.connect(self.gallery_umap_selection.set_number_of_rows)
+        self.gallerySettings.signal_k_similaritySearch.connect(self.dataHandler_umap_selection.set_k_similar)
+
+        # plots
         self.dataHandler.signal_annotation_stats.connect(self.plots['Labels'].update_plot)
         self.dataHandler.signal_annotation_stats.connect(self.plots['Annotation Progress'].update_plot)
         self.dataHandler.signal_predictions.connect(self.plots['Inference Result'].update_plot)
         self.dataHandler.signal_distances.connect(self.plots['Similarity'].update_plot)
         self.dataHandler.signal_UMAP_visualizations.connect(self.plots['UMAP'].update_plot)
 
+        # tabs
         self.plots['Similarity'].signal_bringToFront.connect(dock_plots['Similarity'].raiseDock)
         self.plots['Inference Result'].signal_bringToFront.connect(dock_plots['Inference Result'].raiseDock)
         self.plots['UMAP'].signal_bringToFront.connect(dock_plots['UMAP'].raiseDock)
@@ -1038,6 +1088,9 @@ class MainWindow(QMainWindow):
 
     def switch_tab(self):
         self.gallery_tab.setCurrentIndex(1)
+
+    def switch_tab2(self):
+        self.gallery_tab.setCurrentIndex(2)
 
     def closeEvent(self, event):
         self.dataHandler.save_annotations()
