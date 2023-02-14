@@ -48,12 +48,14 @@ class SelectFromCollection:
         path = Path(verts)
         self.ind = np.nonzero(path.contains_points(self.xys))[0]
         if len(self.ind) == 0:
-            print('no points selected')
+            # print('no points selected')
             self.fc[:, -1] = 1
         else:
-            print(self.ind)
+            # print(self.ind)
             self.fc[:, -1] = self.alpha_other
             self.fc[self.ind, -1] = 1
+            if self.callback is not None:
+                self.callback(self)
         self.collection.set_facecolors(self.fc)
         self.canvas.draw_idle()
 
@@ -67,8 +69,15 @@ class SelectFromCollection:
         # return the indices of the selected points
         return self.ind
 
+    def set_callback(self,callback):
+        self.callback = callback
+
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
+
+    def callback(selector):
+        print('points selected: ')
+        print(selector.get_selection())
 
     data = np.random.rand(100, 2)
     subplot_kw = dict(xlim=(0, 1), ylim=(0, 1), autoscale_on=False)
@@ -76,6 +85,7 @@ if __name__ == '__main__':
 
     pts = ax.scatter(data[:, 0], data[:, 1], s=80)
     selector = SelectFromCollection(ax, pts)
+    selector.set_callback(callback)
 
     '''
     def accept(event):
