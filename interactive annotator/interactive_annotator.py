@@ -846,16 +846,21 @@ class ScatterPlotWidget(QWidget):
         vlayout.addWidget(self.view)
         self.setLayout(vlayout)
 
-        self.x = np.random.rand(100, 1)
-        self.y = np.random.rand(100, 1)
-        self._update_plot()
+        # self.x = np.random.rand(5000, 1)
+        # self.y = np.random.rand(5000, 1)
+        # self.annotation = np.array([np.random.choice(list(COLOR_DICT_PLOT.keys())) for _ in range(5000)])
+        # self._update_plot()
 
     def _update_plot(self):
         if self.x is not None:
+            # get color
+            # c = [COLOR_DICT_PLOT[label] for label in self.annotation.tolist()]
+            lookup = np.vectorize(COLOR_DICT_PLOT.get)
+            c = lookup(self.annotation)
             self.axes.clear()
-            pts = self.axes.scatter(self.x,self.y)
+            pts = self.axes.scatter(self.x,self.y,c=c,s=5)
             zoom_factory(self.axes)
-            self.selector = SelectFromCollection(self.axes, pts)
+            self.selector = SelectFromCollection(self.axes,pts,alpha_other=0.1)
             self.selector.set_callback(self.on_select)
             self.view.draw()
             self.signal_bringToFront.emit()
