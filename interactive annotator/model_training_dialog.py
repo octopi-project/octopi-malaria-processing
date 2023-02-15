@@ -7,6 +7,8 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 
 class ModelTrainingDialog(QWidget):
 
+    signal_model_name = pyqtSignal(str)
+
     def __init__(self, dataHandler, parent=None):
 
         super().__init__(parent)
@@ -32,9 +34,12 @@ class ModelTrainingDialog(QWidget):
         self.number_of_epochs_spin_box = QSpinBox()
         self.number_of_epochs_spin_box.setValue(50)
 
+        self.reset_weight_check_box = QCheckBox()
+
         self.start_button = QPushButton('Start Training')
         self.stop_button = QPushButton('Stop')
         self.progress_bar = QProgressBar()
+
 
         # self.setStyle(QCommonStyle())
         # form_layout = QFormLayout()
@@ -57,9 +62,12 @@ class ModelTrainingDialog(QWidget):
         grid_layout.addWidget(self.batch_size_training_spin_box, 3, 1)
         grid_layout.addWidget(QLabel('Number of Epochs'), 4, 0)
         grid_layout.addWidget(self.number_of_epochs_spin_box, 4, 1)
-        grid_layout.addWidget(self.start_button, 5, 0,1,2)
-        grid_layout.addWidget(self.stop_button, 6, 0,1,2)
-        grid_layout.addWidget(self.progress_bar, 7, 0,1,2)
+        grid_layout.addWidget(QLabel('Reset Model Weights'), 5, 0)
+        grid_layout.addWidget(self.reset_weight_check_box, 5, 1)
+
+        grid_layout.addWidget(self.start_button, 6, 0,1,2)
+        grid_layout.addWidget(self.stop_button, 7, 0,1,2)
+        grid_layout.addWidget(self.progress_bar, 8, 0,1,2)
 
         self.formWidget = QFrame()
         self.formWidget.setLayout(grid_layout)
@@ -87,6 +95,9 @@ class ModelTrainingDialog(QWidget):
 
     def start_training(self):
 
+        model_name = self.model_combo_box.currentText() + '-' + str(self.filter_spin_box.value()) + '-' + str(self.kernel_combo_box.currentText())
+        self.signal_model_name.emit(model_name)
+
         self.loss_train = []
         self.loss_valid = []
         self.epoch = []
@@ -96,6 +107,7 @@ class ModelTrainingDialog(QWidget):
         self.kernel_combo_box.setEnabled(False)
         self.batch_size_training_spin_box.setEnabled(False)
         self.number_of_epochs_spin_box.setEnabled(False)
+        self.reset_weight_check_box.setEnabled(False)
         self.start_button.setEnabled(False)
         self.stop_button.setEnabled(True)
 
@@ -104,7 +116,8 @@ class ModelTrainingDialog(QWidget):
             self.filter_spin_box.value(),
             int(self.kernel_combo_box.currentText()),
             self.batch_size_training_spin_box.value(),
-            self.number_of_epochs_spin_box.value()
+            self.number_of_epochs_spin_box.value(),
+            self.reset_weight_check_box.isChecked()
         )
 
 
@@ -116,6 +129,7 @@ class ModelTrainingDialog(QWidget):
         self.kernel_combo_box.setEnabled(True)
         self.batch_size_training_spin_box.setEnabled(True)
         self.number_of_epochs_spin_box.setEnabled(True)
+        self.reset_weight_check_box.setEnabled(False)
         self.start_button.setEnabled(True)
 
         self.stop_button.setEnabled(False)
