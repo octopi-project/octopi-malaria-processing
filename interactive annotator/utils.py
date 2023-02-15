@@ -2,6 +2,8 @@ import torch
 import numpy as np
 import time
 from torch.utils.data import DataLoader, TensorDataset
+import torch.nn as nn
+from torch.optim import Adam
 
 def generate_predictions_and_features(model,images,batch_size):
 
@@ -54,3 +56,173 @@ def generate_predictions_and_features(model,images,batch_size):
     '''
 
     return predictions, features
+
+
+def train_model(model,images,annotations,batch_size,n_epochs,model_name,reset=False,caller=None):
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    if reset:
+        model.reset_parameters()
+
+    # make images 0-1 if they are not already
+    if images.dtype == np.uint8:
+        images = images.astype(np.float32)/255.0 # convert to 0-1 if uint8 input
+
+    # shuffle
+    indices = np.random.choice(len(images), len(images), replace=False)
+    data = images[indices,:,:,:]
+    label = annotations[indices]
+
+    # Split the data into train, validation, and test sets
+    X_train, X_val = np.split(data, [int(.7 * len(data))])
+    y_train, y_val = np.split(label, [int(.7 * len(label))])
+
+    # Create TensorDatasets for train, validation and test
+    train_dataset = TensorDataset(torch.from_numpy(X_train), torch.from_numpy(y_train))
+    val_dataset = TensorDataset(torch.from_numpy(X_val), torch.from_numpy(y_val))
+
+    train_dataloader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=4)
+    val_dataloader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=4)
+
+    # initialize stats
+    best_validation_loss = np.inf
+    TP_accum = 0
+    TN_accum = 0
+    FP_accum = 0
+    FN_accum = 0
+
+    # Define the loss function and optimizer
+    criterion = nn.BCEWithLogitsLoss()
+    optimizer = Adam(model.parameters(), lr=1e-3)
+
+    # Training loops
+    for epoch in range(n_epochs):
+
+        if caller:
+            if caller.stop_requested:
+                caller.model = model
+                caller.model_loaded = True
+                torch.save(model, model_name + '.pt')
+                caller.signal_training_complete.emit()
+                return
+
+        running_loss = 0.0
+
+        model.train()
+        
+        for inputs, labels in train_dataloader:
+            
+            # inputs = inputs.float().cuda()
+            # labels = labels.cuda()
+            inputs = inputs.float().to(device)
+            labels = labels.float().to(device)
+            
+            # Forward pass
+            outputs = model(inputs)
+            outputs = outputs.view(-1)
+            loss = criterion(outputs, labels)
+
+            # Backward and optimize
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            # Squash the outputs using sigmoid function
+            outputs = torch.sigmoid(outputs)
+
+            # Threshold the outputs to obtain the predictions
+            predictions = (outputs > 0.5).float()
+            predictions = predictions.view(-1)
+
+            TP = ((predictions == 1) & (labels == 1)).sum().item()
+            TN = ((predictions == 0) & (labels == 0)).sum().item()
+            FP = ((predictions == 1) & (labels == 0)).sum().item()
+            FN = ((predictions == 0) & (labels == 1)).sum().item()
+
+            # Accumulate the values
+            TP_accum += TP
+            TN_accum += TN
+            FP_accum += FP
+            FN_accum += FN
+
+            running_loss += loss.item()
+
+        FPR = FP_accum / (FP_accum + TN_accum)
+        FNR = FN_accum / (FN_accum + TP_accum)
+        print('Epoch {}: FPR: {:.4f} FNR: {:.4f}'.format(epoch+1, FPR, FNR))
+
+        # Compute the validation performance
+        validation_loss = evaluate_model(model, val_dataloader, criterion, device)
+        if validation_loss < best_validation_loss:
+            best_validation_loss = validation_loss
+            # torch.save(model.state_dict(), 'best_model.pt')
+            torch.save(model, model_name + '.pt')
+            print('saving the model')
+
+        if caller:
+            caller.signal_progress.emit(100*(epoch+1)/n_epochs)
+            caller.signal_update_loss.emit(epoch,running_loss,validation_loss)
+    
+    # training complete
+    if caller:
+        caller.signal_training_complete.emit()
+
+def evaluate_model(model, dataloader, criterion, device):
+
+    TP_accum = 0
+    TN_accum = 0
+    FP_accum = 0
+    FN_accum = 0
+
+    model.eval()
+
+    total_loss = 0.0
+    start_time = time.time()
+    with torch.no_grad():
+        for inputs, labels in dataloader:
+            # inputs = inputs.float().cuda()
+            # labels = labels.cuda()
+            inputs = inputs.float().to(device)
+            labels = labels.float().to(device)
+            outputs = model(inputs)
+            outputs = outputs.view(-1)
+            loss = criterion(outputs, labels)
+            total_loss += loss.item()
+
+            # Squash the outputs using sigmoid function
+            outputs = torch.sigmoid(outputs)
+
+            # Threshold the outputs to obtain the predictions
+            predictions = (outputs > 0.5).float()
+            predictions = predictions.view(-1)
+
+            TP = ((predictions == 1) & (labels == 1)).sum().item()
+            TN = ((predictions == 0) & (labels == 0)).sum().item()
+            FP = ((predictions == 1) & (labels == 0)).sum().item()
+            FN = ((predictions == 0) & (labels == 1)).sum().item()
+
+            # Accumulate the values
+            TP_accum += TP
+            TN_accum += TN
+            FP_accum += FP
+            FN_accum += FN
+
+    end_time = time.time()
+    total_time = end_time - start_time
+    num_samples = len(dataloader.dataset)
+    throughput = (num_samples) / total_time
+    # print('Processed {:d} samples; Throughput is {:.1f} images/s'.format(num_samples,throughput))
+
+    if FP_accum + TN_accum > 0:
+        FPR = FP_accum / (FP_accum + TN_accum)
+    else:
+        FPR = np.NAN
+
+    if FN_accum + TP_accum > 0:
+        FNR = FN_accum / (FN_accum + TP_accum)
+    else:
+        FNR = np.NAN
+    print('    [validation] FPR: {:.4f} FNR: {:.4f}'.format(FPR, FNR))
+
+    return total_loss
