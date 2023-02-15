@@ -1044,17 +1044,22 @@ class ScatterPlotWidget(QWidget):
 
     def show_points(self,x,y):
         if self.scatter_overlay:
+            '''
             try:
                 self.scatter_overlay.remove()
             except:
                 pass
-        self.scatter_overlay = self.axes.scatter(x,y,s=20,c='#ff7f0e')
-        self.view.draw()
+            '''
+            self.scatter_overlay.set_offsets(np.column_stack((x,y)))
+        else:
+            self.scatter_overlay = self.axes.scatter(x,y,s=20,c='#ff7f0e')
+        self.view.draw_idle()
 
     def clear_overlay(self):
         if self.scatter_overlay:
-            self.scatter_overlay.remove()
-            self.view.draw()
+            # self.scatter_overlay.remove()
+            self.scatter_overlay.set_offsets(np.array([]))
+            self.view.draw_idle()
 
 ###########################################################################################
 #####################################  Main Window  #######################################
