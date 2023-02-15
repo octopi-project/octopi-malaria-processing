@@ -28,6 +28,8 @@ from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT
 from mpl_interactions import ioff, panhandler, zoom_factory
 from utils_plot import *
 
+from model_training_dialog import *
+
 ##########################################################
 ################  Default configurations  ################
 ##########################################################
@@ -536,7 +538,10 @@ class TrainingAndVisualizationWidget(QFrame):
         self.setFrameStyle(QFrame.Panel | QFrame.Raised)
         self.dataHandler = dataHandler
 
+        self.model_training_dialog = ModelTrainingDialog(self.dataHandler)
+
         self.btn_open_model_training = QPushButton("Open Model Training Dialog")
+        self.btn_open_model_training.clicked.connect(self.model_training_dialog.show)
         self.label_model = QLabel()
         self.label_model.setMinimumWidth(100)
         self.label_model.setFrameStyle(QFrame.Panel | QFrame.Sunken)
@@ -567,6 +572,7 @@ class TrainingAndVisualizationWidget(QFrame):
     def generate_UMAP_visualization(self):
         self.dataHandler.generate_UMAP_visualization(self.entry_max_n_for_umap.value())
 
+
 ###########################################################################################
 #####################################  Data Handaler  #####################################
 ###########################################################################################
@@ -582,6 +588,10 @@ class DataHandler(QObject):
     signal_UMAP_visualizations = pyqtSignal(np.ndarray,np.ndarray,np.ndarray) # to UMAP scatter plot
     signal_selected_images = pyqtSignal(np.ndarray,np.ndarray,np.ndarray,np.ndarray) # to selected images data handler
     signal_umap_embedding = pyqtSignal(np.ndarray,np.ndarray)
+
+    # for training
+    signal_progress = pyqtSignal(int)
+    signal_update_loss = pyqtSignal(int,float,float)
 
     def __init__(self,is_for_similarity_search=False,is_for_selected_images=False):
         QObject.__init__(self)
