@@ -256,6 +256,9 @@ class GalleryViewWidget(QFrame):
 
         self.btn_search = QPushButton('Search Similar Images')
         self.btn_show_on_UMAP = QPushButton('Show on UMAP')
+        self.btn_show_on_UMAP_live = QPushButton('Show on UMAP live')
+        self.btn_show_on_UMAP_live.setCheckable(True)
+        self.btn_show_on_UMAP_live.setChecked(True)
         self.dropdown_sort = QComboBox()
         self.dropdown_sort.addItems(['Sort by prediction score','Sort by labels'])
         if is_for_similarity_search:
@@ -278,8 +281,9 @@ class GalleryViewWidget(QFrame):
         # grid.addWidget(self.entry,0,0)
         # grid.addWidget(self.slider,0,1)
         # if self.is_main_gallery:
-        if SHOW_IMAGE_IN_SCATTER_PLOT_ON_SELECTION:
-            grid.addWidget(self.btn_search,3,0,1,len(ANNOTATIONS_DICT))
+        if GENERATE_UMAP_FOR_FULL_DATASET:
+            grid.addWidget(self.btn_search,3,0,1,len(ANNOTATIONS_DICT)-1)
+            grid.addWidget(self.btn_show_on_UMAP_live,3,len(ANNOTATIONS_DICT)-1,1,1)
         else:
             grid.addWidget(self.btn_search,3,0,1,len(ANNOTATIONS_DICT)-1)
             grid.addWidget(self.btn_show_on_UMAP,3,len(ANNOTATIONS_DICT)-1,1,1)
@@ -412,9 +416,9 @@ class GalleryViewWidget(QFrame):
 
     @pyqtSlot()
     def onSelectionChanged(self):
+        selected_images = self.tableWidget.get_selected_cells() # index in the current page
         if self.image_id is not None:
-            selected_images = self.tableWidget.get_selected_cells() # index in the current page
-            if SHOW_IMAGE_IN_SCATTER_PLOT_ON_SELECTION:
+            if self.btn_show_on_UMAP_live.isChecked() and GENERATE_UMAP_FOR_FULL_DATASET: # if SHOW_IMAGE_IN_SCATTER_PLOT_ON_SELECTION:
                 # UMAP transform is too slow - almost 1 s on Mac - only do the "realtime" display if SHOW_IMAGE_IN_SCATTER_PLOT_ON_SELECTION
                 if len(selected_images) > 0:
                     selected_images = [i for i in selected_images if i < len(self.image_id)] # filter it 
