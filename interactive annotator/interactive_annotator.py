@@ -202,6 +202,8 @@ class TableWidget(QTableWidget):
     def set_number_of_rows(self,rows):
         self.num_rows = rows
         self.setRowCount(rows)
+        self.setFixedHeight(min(self.num_rows,MAX_NUM_ROWS_DISPLAYED_PER_PAGE)*self.rowHeight(0)+80)
+
 
     @pyqtSlot(int, int)
     def onCellClicked(self, row, column):
@@ -433,7 +435,8 @@ class GalleryViewSettingsWidget(QFrame):
         self.entry_num_rows_per_page.setMinimum(NUM_ROWS) 
         self.entry_num_rows_per_page.setValue(NUM_ROWS)
         self.entry_k_similarity_search = QSpinBox()
-        self.entry_k_similarity_search.setMinimum(1) 
+        self.entry_k_similarity_search.setMinimum(1)
+        self.entry_k_similarity_search.setMaximum(10000)
         self.entry_k_similarity_search.setValue(K_SIMILAR_DEFAULT)
         
         grid_settings = QGridLayout()
