@@ -14,6 +14,7 @@ import glob
 import torch
 import functools
 import operator
+import threading
 from sklearn.neighbors import KNeighborsClassifier
 import umap
 from sklearn.decomposition import PCA
@@ -572,6 +573,7 @@ class TrainingAndVisualizationWidget(QFrame):
 
         # connections
         self.btn_generate_umap_visualization.clicked.connect(self.generate_UMAP_visualization)
+        self.model_training_dialog.signal_model_name.connect(self.label_model.setText)
 
     def generate_UMAP_visualization(self):
         self.dataHandler.generate_UMAP_visualization(self.entry_max_n_for_umap.value())
@@ -596,6 +598,7 @@ class DataHandler(QObject):
     # for training
     signal_progress = pyqtSignal(int)
     signal_update_loss = pyqtSignal(int,float,float)
+    signal_training_complete = pyqtSignal()
 
     def __init__(self,is_for_similarity_search=False,is_for_selected_images=False):
         QObject.__init__(self)
@@ -618,13 +621,29 @@ class DataHandler(QObject):
         self.reducer = None # UMAP
         self.embeddings_umap = None
 
+        # training
+        self.stop_requested = False
+        self.signal_training_complete.connect(self.on_training_complete)
+
     def load_model(self,path):
-        self.model = models.ResNet(model=model_spec['model'],n_channels=model_spec['n_channels'],n_filters=model_spec['n_filters'],
-            n_classes=model_spec['n_classes'],kernel_size=model_spec['kernel_size'],stride=model_spec['stride'],padding=model_spec['padding'])
+        # check whether it's a model or model state_dict
         if torch.cuda.is_available():
-            self.model.load_state_dict(torch.load(path))
+            loaded_model = torch.load(path)
         else:
-            self.model.load_state_dict(torch.load(path,map_location=torch.device('cpu')))
+            loaded_model = torch.load(path,map_location=torch.device('cpu'))
+        if isinstance(loaded_model, dict):
+            self.model = models.ResNet(model=model_spec['model'],n_channels=model_spec['n_channels'],n_filters=model_spec['n_filters'],
+                n_classes=model_spec['n_classes'],kernel_size=model_spec['kernel_size'],stride=model_spec['stride'],padding=model_spec['padding'])
+            if torch.cuda.is_available():
+                self.model.load_state_dict(torch.load(path))
+            else:
+                self.model.load_state_dict(torch.load(path,map_location=torch.device('cpu')))
+        else:
+            if torch.cuda.is_available():
+                self.model = torch.load(path)
+            else:
+                self.model = torch.load(path,map_location=torch.device('cpu'))
+
         self.model_loaded = True
         # if the images are already loaded, run the model
         if self.images_loaded:
@@ -683,6 +702,42 @@ class DataHandler(QObject):
 
         # emit the results for display
         self.signal_predictions.emit(self.data_pd['output'].to_numpy(),self.data_pd['annotation'].to_numpy())
+
+    def start_training(self,model_name,n_filters,kernel_size,batch_size,n_epochs,reset_model):
+
+        timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
+
+        # prepare the data
+        data_annotated_pd = self.data_pd[self.data_pd['annotation'].isin([0, 1])]
+        annotations = data_annotated_pd['annotation'].values
+        indices = data_annotated_pd.index.to_numpy()
+        print(indices)
+        print(annotations)
+        images = self.images[indices,]
+
+        if not os.path.exists('training records'):
+            os.makedirs('training records')
+        data_annotated_pd[['annotation']].to_csv('training records/' + os.path.splitext(self.image_path)[0] + '_annotations_' + timestamp + '.csv')
+
+        # init the model
+        if reset_model or self.model_loaded==False:
+            self.model = models.ResNet(model=model_name,n_channels=model_spec['n_channels'],n_filters=n_filters,
+                n_classes=model_spec['n_classes'],kernel_size=kernel_size,stride=model_spec['stride'],padding=model_spec['padding'])
+
+        # model_name for saving
+        model_name = 'training records/' + os.path.splitext(self.image_path)[0] + '_' + model_name + '_' + str(n_filters) + '_' + str(kernel_size) + '_' + str(batch_size) + '_' + timestamp
+
+        # start training
+        self.stop_requested = False
+        self.thread = threading.Thread(target=utils.train_model,args=(self.model,images,annotations,batch_size,n_epochs,model_name),kwargs={'caller':self})
+        self.thread.start()
+
+    def stop_training(self):
+        self.stop_requested = True
+
+    def on_training_complete(self):
+        self.run_model()
+        self.signal_populate_page0.emit()
 
     def load_annotations(self,path):
         # load the annotation
