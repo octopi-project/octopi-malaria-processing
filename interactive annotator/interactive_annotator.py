@@ -46,6 +46,8 @@ ANNOTATIONS_REVERSE_DICT = {-1:'not labeled',0:'non-parasite',1:'parasite',9:'un
 PLOTS = ['Labels','Annotation Progress','Prediction score','Similarity','UMAP']
 DEV_MODE = True
 
+GENERATE_UMAP_FOR_FULL_DATASET = True
+
 # on mac
 # NUM_ROWS = 2
 # num_cols = 4
@@ -268,8 +270,11 @@ class GalleryViewWidget(QFrame):
         # grid.addWidget(self.entry,0,0)
         # grid.addWidget(self.slider,0,1)
         # if self.is_main_gallery:
-        grid.addWidget(self.btn_search,3,0,1,len(ANNOTATIONS_DICT)-1)
-        grid.addWidget(self.btn_show_on_UMAP,3,len(ANNOTATIONS_DICT)-1,1,1)
+        if GENERATE_UMAP_FOR_FULL_DATASET:
+            grid.addWidget(self.btn_search,3,0,1,len(ANNOTATIONS_DICT))
+        else:
+            grid.addWidget(self.btn_search,3,0,1,len(ANNOTATIONS_DICT)-1)
+            grid.addWidget(self.btn_show_on_UMAP,3,len(ANNOTATIONS_DICT)-1,1,1)
         grid.addWidget(self.dropdown_sort,2,0,1,len(ANNOTATIONS_DICT))
         i = 0
         for key in ANNOTATIONS_DICT.keys():
@@ -401,16 +406,16 @@ class GalleryViewWidget(QFrame):
     def onSelectionChanged(self):
         if self.image_id is not None:
             selected_images = self.tableWidget.get_selected_cells() # index in the current page
-            '''
-            # UMAP transform is too slow - almost 1 s on Mac - use button instead
-            selected_images = [i for i in selected_images if i < len(self.image_id)] # filter it 
-            selected_images = operator.itemgetter(*selected_images)(self.image_id) # selected_images = [self.image_id[i] for i in selected_images]
-            selected_images = [selected_images] if not isinstance(selected_images, tuple) else list(selected_images)
-            if len(selected_images) > 0:
-                self.signal_selected_images_idx_for_umap.emit(selected_images)
-            '''
-            if len(selected_images) == 0:
-                self.signal_selection_cleared.emit()
+            if GENERATE_UMAP_FOR_FULL_DATASET:
+                # UMAP transform is too slow - almost 1 s on Mac - only do the "realtime" display if GENERATE_UMAP_FOR_FULL_DATASET
+                if len(selected_images) > 0:
+                    selected_images = [i for i in selected_images if i < len(self.image_id)] # filter it 
+                    selected_images = operator.itemgetter(*selected_images)(self.image_id) # selected_images = [self.image_id[i] for i in selected_images]
+                    selected_images = [selected_images] if not isinstance(selected_images, tuple) else list(selected_images)
+                    self.signal_selected_images_idx_for_umap.emit(selected_images)
+        # clear the overlay
+        if len(selected_images) == 0:
+            self.signal_selection_cleared.emit()
 
 class GalleryViewSettingsWidget(QFrame):
 
@@ -542,8 +547,9 @@ class TrainingAndVisualizationWidget(QFrame):
         # layout.addWidget(QLabel('Model'))
         layout.addWidget(self.label_model)
         layout.addStretch()
-        layout.addWidget(QLabel('Max n for UMAP'))
-        layout.addWidget(self.entry_max_n_for_umap)
+        if GENERATE_UMAP_FOR_FULL_DATASET == False:
+            layout.addWidget(QLabel('Max n for UMAP'))
+            layout.addWidget(self.entry_max_n_for_umap)
         layout.addWidget(self.btn_generate_umap_visualization)
         
         self.setLayout(layout)
@@ -589,6 +595,7 @@ class DataHandler(QObject):
         self.k_similar = K_SIMILAR_DEFAULT
 
         self.reducer = None # UMAP
+        self.embeddings_umap = None
 
     def load_model(self,path):
         self.model = models.ResNet(model=model_spec['model'],n_channels=model_spec['n_channels'],n_filters=model_spec['n_filters'],
@@ -805,20 +812,30 @@ class DataHandler(QObject):
 
     def generate_UMAP_visualization(self,n_max):
         self.reducer = umap.UMAP(n_components=2)
-        # sampling
-        indices = np.random.choice(len(self.embeddings), min(len(self.embeddings),n_max), replace=False)
-        # fit and transform
-        t0 = time.time()
-        umap_embedding = self.reducer.fit_transform(self.embeddings[indices,])
-        print('generating UMAP for ' + str(len(indices)) + ' data points took ' + str(time.time()-t0) + ' seconds')
-        # send the result to display
-        annotations = self.data_pd.loc[indices]['annotation'].to_numpy() # use the presorting idx
-        self.signal_UMAP_visualizations.emit(umap_embedding[:,0],umap_embedding[:,1],annotations)
+        if GENERATE_UMAP_FOR_FULL_DATASET:
+            t0 = time.time()
+            self.embeddings_umap = self.reducer.fit_transform(self.embeddings)
+            print('generating UMAP for ' + str(len(self.embeddings)) + ' data points took ' + str(time.time()-t0) + ' seconds')
+            self.signal_UMAP_visualizations.emit(self.embeddings_umap[:,0],self.embeddings_umap[:,1],self.data_pd['annotation'].to_numpy())
+        else:
+            # sampling
+            indices = np.random.choice(len(self.embeddings), min(len(self.embeddings),n_max), replace=False)
+            # fit and transform
+            t0 = time.time()
+            umap_embedding = self.reducer.fit_transform(self.embeddings[indices,])
+            print('generating UMAP for ' + str(len(indices)) + ' data points took ' + str(time.time()-t0) + ' seconds')
+            # send the result to display
+            annotations = self.data_pd.loc[indices]['annotation'].to_numpy() # use the presorting idx
+            self.signal_UMAP_visualizations.emit(umap_embedding[:,0],umap_embedding[:,1],annotations)
 
     def to_umap_embedding(self,index):
         if self.embeddings is not None and self.reducer is not None:
-            umap_embeddings = self.reducer.transform(self.embeddings[index,])
-            self.signal_umap_embedding.emit(umap_embeddings[:,0],umap_embeddings[:,1])
+            if GENERATE_UMAP_FOR_FULL_DATASET:
+                self.signal_umap_embedding.emit(self.embeddings_umap[index,0],self.embeddings_umap[index,1])
+            else:
+                # do the transform 
+                umap_embeddings = self.reducer.transform(self.embeddings[index,])
+                self.signal_umap_embedding.emit(umap_embeddings[:,0],umap_embeddings[:,1])
 
 
 ###########################################################################################
@@ -1023,7 +1040,7 @@ class ScatterPlotWidget(QWidget):
                 self.scatter_overlay.remove()
             except:
                 pass
-        self.scatter_overlay = self.axes.scatter(x,y,c='#ff7f0e')
+        self.scatter_overlay = self.axes.scatter(x,y,s=20,c='#ff7f0e')
         self.view.draw()
 
     def clear_overlay(self):
