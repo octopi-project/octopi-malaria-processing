@@ -49,7 +49,8 @@ PLOTS = ['Labels','Annotation Progress','Prediction score','Similarity','UMAP']
 DEV_MODE = True
 
 GENERATE_UMAP_FOR_FULL_DATASET = True
-USE_UMAP = True
+SHOW_IMAGE_IN_SCATTER_PLOT_ON_SELECTION = False
+USE_UMAP = True # vs us PCA
 
 # on mac
 # NUM_ROWS = 2
@@ -275,7 +276,7 @@ class GalleryViewWidget(QFrame):
         # grid.addWidget(self.entry,0,0)
         # grid.addWidget(self.slider,0,1)
         # if self.is_main_gallery:
-        if GENERATE_UMAP_FOR_FULL_DATASET:
+        if SHOW_IMAGE_IN_SCATTER_PLOT_ON_SELECTION:
             grid.addWidget(self.btn_search,3,0,1,len(ANNOTATIONS_DICT))
         else:
             grid.addWidget(self.btn_search,3,0,1,len(ANNOTATIONS_DICT)-1)
@@ -411,8 +412,8 @@ class GalleryViewWidget(QFrame):
     def onSelectionChanged(self):
         if self.image_id is not None:
             selected_images = self.tableWidget.get_selected_cells() # index in the current page
-            if GENERATE_UMAP_FOR_FULL_DATASET:
-                # UMAP transform is too slow - almost 1 s on Mac - only do the "realtime" display if GENERATE_UMAP_FOR_FULL_DATASET
+            if SHOW_IMAGE_IN_SCATTER_PLOT_ON_SELECTION:
+                # UMAP transform is too slow - almost 1 s on Mac - only do the "realtime" display if SHOW_IMAGE_IN_SCATTER_PLOT_ON_SELECTION
                 if len(selected_images) > 0:
                     selected_images = [i for i in selected_images if i < len(self.image_id)] # filter it 
                     selected_images = operator.itemgetter(*selected_images)(self.image_id) # selected_images = [self.image_id[i] for i in selected_images]
