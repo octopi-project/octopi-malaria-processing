@@ -16,6 +16,7 @@ import functools
 import operator
 from sklearn.neighbors import KNeighborsClassifier
 import umap
+from sklearn.decomposition import PCA
 import models
 import utils
 
@@ -47,6 +48,7 @@ PLOTS = ['Labels','Annotation Progress','Prediction score','Similarity','UMAP']
 DEV_MODE = True
 
 GENERATE_UMAP_FOR_FULL_DATASET = True
+USE_UMAP = True
 
 # on mac
 # NUM_ROWS = 2
@@ -811,7 +813,10 @@ class DataHandler(QObject):
                 os.remove(tmp_file)
 
     def generate_UMAP_visualization(self,n_max):
-        self.reducer = umap.UMAP(n_components=2)
+        if USE_UMAP:
+            self.reducer = umap.UMAP(n_components=2)
+        else:
+            self.reducer = PCA(n_components=2)
         if GENERATE_UMAP_FOR_FULL_DATASET:
             t0 = time.time()
             self.embeddings_umap = self.reducer.fit_transform(self.embeddings)
