@@ -23,6 +23,7 @@ import utils
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import FigureCanvas
+from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT
 from mpl_interactions import ioff, panhandler, zoom_factory
 from utils_plot import *
@@ -997,6 +998,14 @@ class ScatterPlotWidget(QWidget):
         
         #  create widgets
         self.view = FigureCanvas(Figure(figsize=(5, 3)))
+        self.toolbar = NavigationToolbar(self.view,self)
+        # self.toolbar.toolitems = [t for t in NavigationToolbar.toolitems if t[0] in ('Home', 'Pan', 'Zoom', 'Save')]
+        # self.toolbar.toolitems = [
+        #     ('Pan', 'Pan axes with left mouse, zoom with right', 'move', 'pan'),
+        #     ('Zoom', 'Zoom to rectangle', 'zoom_to_rect', 'zoom')
+        # ]
+        # self.toolbar.update() # these didn't work
+
         with plt.ioff():
             self.axes = self.view.figure.subplots()
 
@@ -1010,6 +1019,7 @@ class ScatterPlotWidget(QWidget):
         #  Create layout
         vlayout = QVBoxLayout()
         vlayout.addWidget(self.view)
+        vlayout.addWidget(self.toolbar)
         self.setLayout(vlayout)
 
         # self.x = np.random.rand(5000, 1)
