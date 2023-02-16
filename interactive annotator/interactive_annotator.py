@@ -715,21 +715,22 @@ class DataHandler(QObject):
         print(annotations)
         images = self.images[indices,]
 
-        if not os.path.exists('training records'):
-            os.makedirs('training records')
-        data_annotated_pd[['annotation']].to_csv('training records/' + os.path.splitext(self.image_path)[0] + '_annotations_' + timestamp + '.csv')
+        # if not os.path.exists('training records'):
+        #     os.makedirs('training records')
+        data_annotated_pd[['annotation']].to_csv(os.path.splitext(self.image_path)[0] + '_annotations_' + timestamp + '.csv')
 
         # init the model
         if reset_model or self.model_loaded==False:
+            print('initialize the model')
             self.model = models.ResNet(model=model_name,n_channels=model_spec['n_channels'],n_filters=n_filters,
                 n_classes=model_spec['n_classes'],kernel_size=kernel_size,stride=model_spec['stride'],padding=model_spec['padding'])
 
         # model_name for saving
-        model_name = 'training records/' + os.path.splitext(self.image_path)[0] + '_' + model_name + '_' + str(n_filters) + '_' + str(kernel_size) + '_' + str(batch_size) + '_' + timestamp
+        self.model_name = os.path.splitext(self.image_path)[0] + '_' + model_name + '_' + str(n_filters) + '_' + str(kernel_size) + '_' + str(batch_size) + '_' + timestamp
 
         # start training
         self.stop_requested = False
-        self.thread = threading.Thread(target=utils.train_model,args=(self.model,images,annotations,batch_size,n_epochs,model_name),kwargs={'caller':self})
+        self.thread = threading.Thread(target=utils.train_model,args=(self.model,images,annotations,batch_size,n_epochs,self.model_name),kwargs={'caller':self})
         self.thread.start()
 
     def stop_training(self):
@@ -972,8 +973,10 @@ class BarPlotWidget(QWidget):
     def _update_plot(self):
         self.axes.clear()
         self.barh = self.axes.barh(self.labels, self.counts, label=self.labels, tick_label=['']*4, color=self.color)
-        if max(self.counts==0):
+        if max(self.counts)==0:
             self.axes.set_xlim(0, 1)
+        else:
+            self.axes.autoscale(enable=True, axis='x')
         self.axes.get_xaxis().set_ticks([])
         self.axes.tick_params(left = False, bottom=False)
         # y_pos = np.arange(len(self.labels))
@@ -984,8 +987,8 @@ class BarPlotWidget(QWidget):
         self.axes.spines['right'].set_visible(False)
         legend = self.axes.legend(self.labels,loc='upper center',bbox_to_anchor=(0.5, 0.075),fancybox=True,ncol=int(len(self.labels)/2))
         bbox = legend.get_window_extent()
-        self.view.figure.set_size_inches(1.2*bbox.width/self.view.figure.dpi, self.view.figure.get_size_inches()[1]) 
-        self.view.setMinimumSize(self.view.sizeHint())
+        # self.view.figure.set_size_inches(1.2*bbox.width/self.view.figure.dpi, self.view.figure.get_size_inches()[1]) 
+        # self.view.setMinimumSize(self.view.sizeHint())
         # self.view.setMinimumSize(self.view.size())       
         self.view.draw()
 

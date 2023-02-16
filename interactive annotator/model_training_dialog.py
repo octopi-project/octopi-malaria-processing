@@ -92,6 +92,7 @@ class ModelTrainingDialog(QWidget):
         self.stop_button.clicked.connect(self.stop_training)
         self.dataHandler.signal_progress.connect(self.progress_bar.setValue)
         self.dataHandler.signal_update_loss.connect(self.update_loss)
+        self.dataHandler.signal_training_complete.connect(self.on_training_complete)
 
     def start_training(self):
 
@@ -129,9 +130,8 @@ class ModelTrainingDialog(QWidget):
         self.kernel_combo_box.setEnabled(True)
         self.batch_size_training_spin_box.setEnabled(True)
         self.number_of_epochs_spin_box.setEnabled(True)
-        self.reset_weight_check_box.setEnabled(False)
+        self.reset_weight_check_box.setEnabled(True)
         self.start_button.setEnabled(True)
-
         self.stop_button.setEnabled(False)
 
     def update_loss(self, epoch, loss_train, loss_valid):
@@ -146,6 +146,17 @@ class ModelTrainingDialog(QWidget):
         self.plotWidget.ax.legend()
         self.plotWidget.ax.set_yscale('log')
         self.plotWidget.canvas.draw()
+
+    def on_training_complete(self):
+        self.dataHandler.stop_training()
+        self.model_combo_box.setEnabled(True)
+        self.filter_spin_box.setEnabled(True)
+        self.kernel_combo_box.setEnabled(True)
+        self.batch_size_training_spin_box.setEnabled(True)
+        self.number_of_epochs_spin_box.setEnabled(True)
+        self.reset_weight_check_box.setEnabled(True)
+        self.start_button.setEnabled(True)
+        self.stop_button.setEnabled(False)
 
 
 '''
@@ -206,6 +217,7 @@ if __name__ == '__main__':
 
         signal_progress = pyqtSignal(int)
         signal_update_loss = pyqtSignal(int,float,float)
+        signal_training_complete = pyqtSignal()
 
         def __init__(self):
             QObject.__init__(self)
@@ -222,11 +234,13 @@ if __name__ == '__main__':
         def train(self):
             for i in range(100):
                 if self.stop_requested:
+                    self.signal_training_complete.emit()
                     break
                 else:
                     time.sleep(0.1)
                     self.signal_progress.emit(i+1)
                     self.signal_update_loss.emit(i,i**2,i**2.1)
+            self.signal_training_complete.emit()
 
     class MainWindow(QMainWindow):
 

@@ -4,6 +4,7 @@ import time
 from torch.utils.data import DataLoader, TensorDataset
 import torch.nn as nn
 from torch.optim import Adam
+import copy
 
 def generate_predictions_and_features(model,images,batch_size):
 
@@ -60,9 +61,13 @@ def generate_predictions_and_features(model,images,batch_size):
 
 def train_model(model,images,annotations,batch_size,n_epochs,model_name,reset=False,caller=None):
 
+    model_best = None
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
+
     if reset:
+        print('reset model parameters')
         model.reset_parameters()
 
     # make images 0-1 if they are not already
@@ -101,9 +106,11 @@ def train_model(model,images,annotations,batch_size,n_epochs,model_name,reset=Fa
 
         if caller:
             if caller.stop_requested:
-                caller.model = model
-                caller.model_loaded = True
-                torch.save(model, model_name + '.pt')
+                if model_best is not None:
+                    caller.model = copy.deepcopy(model_best)
+                    caller.model_loaded = True
+                    print('saving the model to ' + model_name + '.pt')
+                    torch.save(model, model_name + '.pt')
                 caller.signal_training_complete.emit()
                 return
 
@@ -157,8 +164,9 @@ def train_model(model,images,annotations,batch_size,n_epochs,model_name,reset=Fa
         if validation_loss < best_validation_loss:
             best_validation_loss = validation_loss
             # torch.save(model.state_dict(), 'best_model.pt')
-            torch.save(model, model_name + '.pt')
-            print('saving the model')
+            # torch.save(model, model_name + '.pt')
+            # caller.model = model # read from disk instead
+            model_best = copy.deepcopy(model)
 
         if caller:
             caller.signal_progress.emit(100*(epoch+1)/n_epochs)
@@ -166,6 +174,11 @@ def train_model(model,images,annotations,batch_size,n_epochs,model_name,reset=Fa
     
     # training complete
     if caller:
+        if model_best is not None:
+            caller.model = copy.deepcopy(model_best)
+            caller.model_loaded = True
+            print('saving the model to ' + model_name + '.pt')
+            torch.save(model, model_name + '.pt')
         caller.signal_training_complete.emit()
 
 def evaluate_model(model, dataloader, criterion, device):
@@ -223,6 +236,6 @@ def evaluate_model(model, dataloader, criterion, device):
         FNR = FN_accum / (FN_accum + TP_accum)
     else:
         FNR = np.NAN
-    print('    [validation] FPR: {:.4f} FNR: {:.4f}'.format(FPR, FNR))
+    print('    [validation] Loss {:.4f} FPR: {:.4f} FNR: {:.4f}'.format(total_loss, FPR, FNR))
 
     return total_loss
