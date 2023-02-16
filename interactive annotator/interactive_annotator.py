@@ -1087,6 +1087,7 @@ class ScatterPlotWidget(QWidget):
         self.annotation = None
         self.selector = None
 
+        self.scatter = None
         self.scatter_overlay = None
 
         #  Create layout
@@ -1107,9 +1108,9 @@ class ScatterPlotWidget(QWidget):
             lookup = np.vectorize(COLOR_DICT_PLOT.get)
             c = lookup(self.annotation)
             self.axes.clear()
-            pts = self.axes.scatter(self.x,self.y,c=c,s=5)
+            self.scatter = self.axes.scatter(self.x,self.y,c=c,s=5)
             zoom_factory(self.axes)
-            self.selector = SelectFromCollection(self.axes,pts,alpha_other=0.1)
+            self.selector = SelectFromCollection(self.axes,self.scatter,alpha_other=0.1)
             self.selector.set_callback(self.on_select)
             self.view.draw()
             self.signal_bringToFront.emit()
@@ -1141,8 +1142,11 @@ class ScatterPlotWidget(QWidget):
     def clear_overlay(self):
         if self.scatter_overlay:
             # self.scatter_overlay.remove()
-            self.scatter_overlay.set_offsets(np.array([]))
-            self.view.draw_idle()
+            # self.scatter_overlay.set_offsets(np.array([[]]))
+            if self.scatter_overlay:
+                self.scatter_overlay.remove()
+                self.scatter_overlay = None
+                self.view.draw_idle()
 
 ###########################################################################################
 #####################################  Main Window  #######################################

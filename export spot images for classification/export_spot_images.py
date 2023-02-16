@@ -138,4 +138,4 @@ if __name__ == '__main__':
             
         # remove intermidate result
         print("remove intermidiate files")
-        shutil.rmtree(dir_in)        
+        shutil.rmtree(dir_in)
