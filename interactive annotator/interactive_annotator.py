@@ -44,16 +44,14 @@ K_SIMILAR_DEFAULT = 20
 model_spec = {'model':'resnet18','n_channels':4,'n_filters':64,'n_classes':1,'kernel_size':3,'stride':1,'padding':1}
 batch_size_inference = 2048
 KNN_METRIC = 'cosine'
-COLOR_DICT = {0:QColor(150,200,250),1:QColor(250,200,200),9:QColor(250,250,200)} # 0: nonparasites, 1: parasites, 9: not sure
-COLOR_DICT_PLOT = {-1:'#C8C8C8',0:'#96C8FA',1:'#FAC8C8',9:'#FAFAC8'}
-ANNOTATIONS_DICT = {'Label as parasite':1,'Label as non-parasite':0,'Label as unsure':9,'Remove Annotation':-1}
-ANNOTATIONS_REVERSE_DICT = {-1:'not labeled',0:'non-parasite',1:'parasite',9:'unsure'}
-PLOTS = ['Labels','Annotation Progress','Prediction score','Similarity','UMAP']
+
 DEV_MODE = True
 
 GENERATE_UMAP_FOR_FULL_DATASET = True
 SHOW_IMAGE_IN_SCATTER_PLOT_ON_SELECTION = False
 USE_UMAP = True # vs us PCA
+
+
 
 # on mac
 # NUM_ROWS = 2
@@ -71,6 +69,17 @@ if config_files:
 ##########################################################
 ##### end of loading machine specific configurations #####
 ##########################################################
+
+if USE_UMAP:
+    dimentionality_reduction = 'UMAP'
+else:
+    dimentionality_reduction = 'PCA'
+
+COLOR_DICT = {0:QColor(150,200,250),1:QColor(250,200,200),9:QColor(250,250,200)} # 0: nonparasites, 1: parasites, 9: not sure
+COLOR_DICT_PLOT = {-1:'#C8C8C8',0:'#96C8FA',1:'#FAC8C8',9:'#FAFAC8'}
+ANNOTATIONS_DICT = {'Label as parasite':1,'Label as non-parasite':0,'Label as unsure':9,'Remove Annotation':-1}
+ANNOTATIONS_REVERSE_DICT = {-1:'not labeled',0:'non-parasite',1:'parasite',9:'unsure'}
+PLOTS = ['Labels','Annotation Progress','Prediction score','Similarity',dimentionality_reduction]
 
 # modified from https://stackoverflow.com/questions/45896291/how-to-show-image-and-text-at-same-cell-in-qtablewidget-in-pyqt
 def generate_overlay(image):
@@ -256,8 +265,8 @@ class GalleryViewWidget(QFrame):
         self.entry.setValue(0)
 
         self.btn_search = QPushButton('Search Similar Images')
-        self.btn_show_on_UMAP = QPushButton('Show on UMAP')
-        self.btn_show_on_UMAP_live = QPushButton('Show on UMAP live')
+        self.btn_show_on_UMAP = QPushButton('Show on ' + dimentionality_reduction)
+        self.btn_show_on_UMAP_live = QPushButton('Show on ' + dimentionality_reduction + ' live')
         self.btn_show_on_UMAP_live.setCheckable(True)
         self.btn_show_on_UMAP_live.setChecked(True)
         self.dropdown_sort = QComboBox()
@@ -556,7 +565,7 @@ class TrainingAndVisualizationWidget(QFrame):
         self.entry_max_n_for_umap.setMaximum(1000000)
         self.entry_max_n_for_umap.setSingleStep(1000)
         self.entry_max_n_for_umap.setValue(1000)
-        self.btn_generate_umap_visualization = QPushButton("Generate UMAP Visualization")
+        self.btn_generate_umap_visualization = QPushButton("Generate " + dimentionality_reduction + " Visualization")
         
         # Create the layout
         layout = QHBoxLayout()
@@ -1179,13 +1188,13 @@ class MainWindow(QMainWindow):
         self.plots['Annotation Progress'] = BarPlotWidget()
         self.plots['Inference Result'] = HistogramPlotWidget()
         self.plots['Similarity'] = StemPlotWidget()
-        self.plots['UMAP'] = ScatterPlotWidget()
+        self.plots[dimentionality_reduction] = ScatterPlotWidget()
 
         # tab widget
         self.gallery_tab = QTabWidget()
         self.gallery_tab.addTab(self.gallery,'Full Dataset')
         self.gallery_tab.addTab(self.gallery_similarity,'Similarity Search')
-        self.gallery_tab.addTab(self.gallery_umap_selection,'UMAP Selection')
+        self.gallery_tab.addTab(self.gallery_umap_selection,dimentionality_reduction + ' Selection')
 
         layout = QVBoxLayout()
         layout.addWidget(self.dataLoaderWidget)
@@ -1211,7 +1220,7 @@ class MainWindow(QMainWindow):
         dock_plots['Labels'].raiseDock()
         main_dockArea.addDock(dock_plots['Inference Result'],'bottom',relativeTo=dock_plots['Labels'])
         main_dockArea.addDock(dock_plots['Similarity'],'below',relativeTo=dock_plots['Inference Result'])
-        main_dockArea.addDock(dock_plots['UMAP'],'below',relativeTo=dock_plots['Similarity'])
+        main_dockArea.addDock(dock_plots[dimentionality_reduction],'below',relativeTo=dock_plots['Similarity'])
         dock_plots['Inference Result'].raiseDock() # bring some to the front
         
         self.setCentralWidget(main_dockArea)
@@ -1245,7 +1254,7 @@ class MainWindow(QMainWindow):
         self.gallery_umap_selection.signal_switchTab.connect(self.switch_tab)
 
         # get selected images in UMAP scatter plot
-        self.plots['UMAP'].signal_selected_points.connect(self.dataHandler.prepare_selected_images)
+        self.plots[dimentionality_reduction].signal_selected_points.connect(self.dataHandler.prepare_selected_images)
         self.dataHandler.signal_selected_images.connect(self.dataHandler_umap_selection.populate_selected_images)
 
         # show selected images in UMAP
@@ -1253,12 +1262,12 @@ class MainWindow(QMainWindow):
         self.gallery_similarity.signal_selected_images_idx_for_umap.connect(self.dataHandler.to_umap_embedding)
         self.gallery_umap_selection.signal_selected_images_idx_for_umap.connect(self.dataHandler.to_umap_embedding)
 
-        self.dataHandler.signal_umap_embedding.connect(self.plots['UMAP'].show_points)
+        self.dataHandler.signal_umap_embedding.connect(self.plots[dimentionality_reduction].show_points)
 
         # clear the overlay when images are de-selected
-        self.gallery.signal_selection_cleared.connect(self.plots['UMAP'].clear_overlay)
-        self.gallery_similarity.signal_selection_cleared.connect(self.plots['UMAP'].clear_overlay)
-        self.gallery_umap_selection.signal_selection_cleared.connect(self.plots['UMAP'].clear_overlay)
+        self.gallery.signal_selection_cleared.connect(self.plots[dimentionality_reduction].clear_overlay)
+        self.gallery_similarity.signal_selection_cleared.connect(self.plots[dimentionality_reduction].clear_overlay)
+        self.gallery_umap_selection.signal_selection_cleared.connect(self.plots[dimentionality_reduction].clear_overlay)
 
         # gallery settings
         self.gallerySettings.signal_numRowsPerPage.connect(self.gallery.set_number_of_rows)
@@ -1278,12 +1287,12 @@ class MainWindow(QMainWindow):
         self.dataHandler.signal_annotation_stats.connect(self.plots['Annotation Progress'].update_plot)
         self.dataHandler.signal_predictions.connect(self.plots['Inference Result'].update_plot)
         self.dataHandler.signal_distances.connect(self.plots['Similarity'].update_plot)
-        self.dataHandler.signal_UMAP_visualizations.connect(self.plots['UMAP'].update_plot)
+        self.dataHandler.signal_UMAP_visualizations.connect(self.plots[dimentionality_reduction].update_plot)
 
         # tabs
         self.plots['Similarity'].signal_bringToFront.connect(dock_plots['Similarity'].raiseDock)
         self.plots['Inference Result'].signal_bringToFront.connect(dock_plots['Inference Result'].raiseDock)
-        self.plots['UMAP'].signal_bringToFront.connect(dock_plots['UMAP'].raiseDock)
+        self.plots[dimentionality_reduction].signal_bringToFront.connect(dock_plots[dimentionality_reduction].raiseDock)
 
         # dev mode
         if DEV_MODE:
