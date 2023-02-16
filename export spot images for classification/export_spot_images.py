@@ -129,6 +129,12 @@ if __name__ == '__main__':
             print("upload spot images")
             fs.put(dataset_id + '_spot_images.zip',bucket_destination + '/' + dataset_id + '/version' + str(version) + '/spot_images.zip')
             os.remove(dataset_id + '_spot_images.zip')
+
+        # save numpy
+        a = 15
+        images = ds_all.spot_images[:, :, 0, 30-a:30+a+1, 30-a:30+a+1].to_numpy()
+        print(images.shape)
+        np.save(dataset_id +'.npy',images)
             
         # remove intermidate result
         print("remove intermidiate files")
