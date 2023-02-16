@@ -8,10 +8,11 @@ import cupy as cp # conda install -c conda-forge cupy==10.2
 from utils import *
 
 # processing implementation
-def process_column(j,gcs_settings,dataset_id,parameters,settings):
+def process_column(j,gcs_settings,dataset_id,parameters,settings,fs=None):
   bucket_source = settings['bucket_source']
   bucket_destination = settings['bucket_destination']
-  fs = gcsfs.GCSFileSystem(project=gcs_settings['gcs_project'],token=gcs_settings['gcs_token'])
+  if fs == None:
+    fs = gcsfs.GCSFileSystem(project=gcs_settings['gcs_project'],token=gcs_settings['gcs_token'])
   for i in range(parameters['row_start'],parameters['row_end']):
     for k in range(parameters['z_start'],parameters['z_end']):
       file_id = str(i) + '_' + str(j) + '_' + str(k)
@@ -37,6 +38,9 @@ def process_column(j,gcs_settings,dataset_id,parameters,settings):
         I_boxed = cv2.cvtColor(cp.asnumpy(255*highlight_spots(I_fluorescence_bg_removed,spot_list)).astype('uint8'),cv2.COLOR_RGB2BGR)
         with fs.open( bucket_destination + '/' + dataset_id + '/' + 'spot_detection_result/' + file_id + '.jpg', 'wb' ) as f:
           f.write(cv2.imencode('.jpg',I_boxed)[1].tobytes())
+        if i == 1 and j == 1:
+          with fs.open( bucket_destination + '/spot_detection_result/' + dataset_id + '_' + file_id + '.png', 'wb' ) as f:
+            f.write(cv2.imencode('.png',I_boxed)[1].tobytes())
       # save the spot list
       with fs.open( bucket_destination + '/' + dataset_id + '/' + 'spot_lists/' + file_id + '.csv', 'wb' ) as f:
         np.savetxt(f,spot_list,fmt=('%d','%d','%.1f'),delimiter=',')
