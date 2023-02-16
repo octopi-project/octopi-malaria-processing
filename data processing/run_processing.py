@@ -106,6 +106,7 @@ if __name__ == '__main__':
       G = spot_data_pd['G'].to_numpy()
       B = spot_data_pd['B'].to_numpy()
       s = np.vstack((R/B,G/B)).T
+      plt.clf()
       FlowCal.plot.density2d(s, mode='scatter',xscale='linear',yscale='linear',xlim=[0,0.75],ylim=[0,1.5])
       plt.xlabel("R/B")
       plt.ylabel("G/B")
