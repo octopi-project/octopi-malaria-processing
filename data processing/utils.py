@@ -1,8 +1,11 @@
 import imageio
 import cv2
-import cupy as cp # conda install -c conda-forge cupy==10.2
+import cupy as cp # conda install -c conda-forge cupy==10.2 or conda install -c conda-forge cupy cudatoolkit=11.0
 import cupyx.scipy.ndimage
-from cupyx.scipy.ndimage.filters import laplace
+# from cupyx.scipy import ndimage # for 11.0
+# from ndimage import laplace # for 11.0
+from cupyx.scipy.ndimage import laplace # for 11.0
+# from cupyx.scipy.ndimage.filters import laplace # for 10.2
 from skimage.feature.blob import _prune_blobs
 import numpy as np
 from scipy import signal
@@ -110,7 +113,7 @@ def highlight_spots(I,spot_list,contrast_boost=1.6):
 		add_bounding_box(I,int(s[0]),int(s[1]),int(s[2]))
 	return I
 
-def add_bounding_box(I,x,y,r,extension=2,color=[0.6,0,0]):
+def add_bounding_box(I,x,y,r,extension=2,color=[0.6,0.6,0]):
 	ny, nx, nc = I.shape
 	x_min = max(x - r - extension,0)
 	y_min = max(y - r - extension,0)
