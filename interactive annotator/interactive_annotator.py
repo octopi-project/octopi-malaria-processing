@@ -31,6 +31,8 @@ from utils_plot import *
 
 from model_training_dialog import *
 
+import matplotlib as mpl
+
 ##########################################################
 ################  Default configurations  ################
 ##########################################################
@@ -51,7 +53,7 @@ GENERATE_UMAP_FOR_FULL_DATASET = True
 SHOW_IMAGE_IN_SCATTER_PLOT_ON_SELECTION = False
 USE_UMAP = True # vs us PCA
 
-
+PLOTS_FONT_SIZE = 20
 
 # on mac
 # NUM_ROWS = 2
@@ -69,6 +71,9 @@ if config_files:
 ##########################################################
 ##### end of loading machine specific configurations #####
 ##########################################################
+
+# set font size
+mpl.rcParams['font.size'] = PLOTS_FONT_SIZE
 
 if USE_UMAP:
     dimentionality_reduction = 'UMAP'
