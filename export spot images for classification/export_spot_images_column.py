@@ -7,10 +7,11 @@ import gcsfs
 import argparse
 
 # for multiprocessing
-def process_column(j,spot_data_pd,gcs_settings,dataset_id,parameters,settings):
+def process_column(j,spot_data_pd,gcs_settings,dataset_id,parameters,settings,fs=None):
   bucket_source = settings['bucket_source']
   bucket_destination = settings['bucket_destination']
-  fs = gcsfs.GCSFileSystem(project=gcs_settings['gcs_project'],token=gcs_settings['gcs_token'])
+  if fs == None:
+    fs = gcsfs.GCSFileSystem(project=gcs_settings['gcs_project'],token=gcs_settings['gcs_token'])
   for i in range(parameters['row_start'],parameters['row_end']):
     for k in range(parameters['z_start'],parameters['z_end']):
       file_id = str(i) + '_' + str(j) + '_' + str(k)
