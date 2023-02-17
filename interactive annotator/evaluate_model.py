@@ -2,7 +2,7 @@
 # image_path = ''
 # annotation_path = 'test' 
 
-batch_size_inference = 2048
+batch_size_inference = 1024
 
 target_false_negative_rate = 0.2
 target_false_positive = 5
@@ -105,4 +105,4 @@ plt.savefig(model_path + '_' + image_path + '.png', dpi='figure')
 
 # show false positives
 idx = np.squeeze(predictions >= th) & np.squeeze(annotations==0)
-utils_visualization.make_movie(images[idx],image_path + '_' + model_path + '_' + str(th) + '.mp4', scale_factor=5, fps=10)
+utils_visualization.make_movie(images[idx],image_path + '_' + model_path + '_' + str(th) + '.mp4', indices[idx], scale_factor=5, fps=5, save_images=True)

@@ -2,9 +2,14 @@ import imageio
 import numpy as np
 import cv2
 
-def make_movie(images_numpy, output_file, scale_factor=5, fps=24):
+def make_movie(images_numpy, output, indices=None, scale_factor=5, fps=24, save_images=False):
 
-    writer = imageio.get_writer(output_file, fps=fps)
+    writer = imageio.get_writer(output + '.mp4', fps=fps)
+
+    if indices is not None and save_images:
+        if os.path.exists(output):
+            os.rmdir(output)
+        os.mkdir(output)
 
     for i in range(len(images_numpy)):
         frame = images_numpy[i]
@@ -20,6 +25,10 @@ def make_movie(images_numpy, output_file, scale_factor=5, fps=24):
         new_height, new_width = int(frame.shape[0] * scale_factor), int(frame.shape[1] * scale_factor)
         frame = cv2.resize(frame,(new_width, new_height),interpolation=cv2.INTER_NEAREST)
         writer.append_data(frame)
+
+        if indices is not None and save_images: 
+            imageio.imwrite(output + '/' + str(indices[i]) + '.png',frame)
+        
         print(i)
         if i > 200:
             break
