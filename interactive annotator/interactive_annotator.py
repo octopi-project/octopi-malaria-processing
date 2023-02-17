@@ -41,7 +41,7 @@ MAX_NUM_ROWS_DISPLAYED_PER_PAGE = 6
 num_cols = 10
 SCALE_FACTOR = 8
 
-K_SIMILAR_DEFAULT = 20
+K_SIMILAR_DEFAULT = 250
 
 model_spec = {'model':'resnet18','n_channels':4,'n_filters':64,'n_classes':1,'kernel_size':3,'stride':1,'padding':1}
 batch_size_inference = 2048
@@ -285,7 +285,16 @@ class GalleryViewWidget(QFrame):
         self.btn_annotations = {}
         for key in ANNOTATIONS_DICT.keys():
             self.btn_annotations[key] = QPushButton(key)
+
+        self.shortcut = {}
+        for key in ANNOTATIONS_DICT.keys():
+            if ANNOTATIONS_DICT[key] > 0:
+                self.shortcut[key] = QShortcut(QKeySequence(str(ANNOTATIONS_DICT[key])), self)
+                self.shortcut[key].activated.connect(self.btn_annotations[key].click)
         
+        self.shortcut['-'] = QShortcut(QKeySequence('-'), self)
+        self.shortcut['-'].activated.connect(self.btn_annotations['Remove Annotation'].click)
+
         vbox = QVBoxLayout()
         vbox.addWidget(self.tableWidget)
         grid = QGridLayout()
