@@ -54,6 +54,8 @@ SHOW_IMAGE_IN_SCATTER_PLOT_ON_SELECTION = False
 USE_UMAP = True # vs us PCA
 
 PLOTS_FONT_SIZE = 20
+SCATTER_SIZE = 5
+SCATTER_SIZE_OVERLAY = 20
 
 # on mac
 # NUM_ROWS = 2
@@ -1135,7 +1137,7 @@ class ScatterPlotWidget(QWidget):
             lookup = np.vectorize(COLOR_DICT_PLOT.get)
             c = lookup(self.annotation)
             self.axes.clear()
-            self.scatter = self.axes.scatter(self.x,self.y,c=c,s=5)
+            self.scatter = self.axes.scatter(self.x,self.y,c=c,s=SCATTER_SIZE)
             zoom_factory(self.axes)
             self.selector = SelectFromCollection(self.axes,self.scatter,alpha_other=0.1)
             self.selector.set_callback(self.on_select)
@@ -1163,7 +1165,7 @@ class ScatterPlotWidget(QWidget):
             '''
             self.scatter_overlay.set_offsets(np.column_stack((x,y)))
         else:
-            self.scatter_overlay = self.axes.scatter(x,y,s=20,c='#ff7f0e')
+            self.scatter_overlay = self.axes.scatter(x,y,s=SCATTER_SIZE_OVERLAY,c='#ff7f0e')
         self.view.draw_idle()
 
     def clear_overlay(self):
