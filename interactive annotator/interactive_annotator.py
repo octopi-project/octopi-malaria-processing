@@ -923,7 +923,7 @@ class DataHandler(QObject):
             t0 = time.time()
             self.embeddings_umap = self.reducer.fit_transform(self.embeddings)
             print('generating UMAP for ' + str(len(self.embeddings)) + ' data points took ' + str(time.time()-t0) + ' seconds')
-            self.signal_UMAP_visualizations.emit(self.embeddings_umap[:,0],self.embeddings_umap[:,1],self.data_pd['annotation'].to_numpy())
+            self.signal_UMAP_visualizations.emit(self.embeddings_umap[:,0],self.embeddings_umap[:,1],self.data_pd.sort_index()['annotation'].to_numpy())
         else:
             # sampling
             indices = np.random.choice(len(self.embeddings), min(len(self.embeddings),n_max), replace=False)
