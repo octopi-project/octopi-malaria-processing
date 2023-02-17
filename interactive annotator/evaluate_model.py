@@ -105,4 +105,4 @@ plt.savefig(model_path + '_' + image_path + '.png', dpi='figure')
 
 # show false positives
 idx = np.squeeze(predictions >= th) & np.squeeze(annotations==0)
-utils_visualization.make_movie(images[idx],image_path + '_' + model_path + '_' + str(th) + '.mp4', indices[idx], scale_factor=5, fps=5, save_images=True)
+utils_visualization.make_movie(images[idx],image_path + '_' + model_path + '_' + str(th), indices[idx], scale_factor=5, fps=5, save_images=True)
