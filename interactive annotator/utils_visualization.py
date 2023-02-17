@@ -1,6 +1,7 @@
 import imageio
 import numpy as np
 import cv2
+import os
 
 def make_movie(images_numpy, output, indices=None, scale_factor=5, fps=24, save_images=False):
 
