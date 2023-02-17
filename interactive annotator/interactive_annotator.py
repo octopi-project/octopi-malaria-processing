@@ -288,7 +288,7 @@ class GalleryViewWidget(QFrame):
 
         self.shortcut = {}
         for key in ANNOTATIONS_DICT.keys():
-            if ANNOTATIONS_DICT[key] > 0:
+            if ANNOTATIONS_DICT[key] >= 0:
                 self.shortcut[key] = QShortcut(QKeySequence(str(ANNOTATIONS_DICT[key])), self)
                 self.shortcut[key].activated.connect(self.btn_annotations[key].click)
         
@@ -334,7 +334,7 @@ class GalleryViewWidget(QFrame):
         # clear selections
         self.tableWidget.clearSelection()
         # self.tableWidget.populate_simulate(None,None)
-        if self.dataHandler is not None:
+        if self.dataHandler is not None and self.dataHandler.images is not None:
             images,texts,self.image_id,annotations = self.dataHandler.get_page(self.entry.value())
             self.tableWidget.populate(images,texts,annotations,self.image_id)
         else:
@@ -797,12 +797,16 @@ class DataHandler(QObject):
         
     def set_number_of_images_per_page(self,n):
         self.n_images_per_page = n
+        self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
 
     def set_k_similar(self,k):
         self.k_similar = k
 
     def get_number_of_rows(self):
-        return self.images.shape[0]
+        if self.images is not None:
+            return self.images.shape[0]
+        else:
+            return 0
 
     def get_page(self,page_number):
         idx_start = self.n_images_per_page*page_number
