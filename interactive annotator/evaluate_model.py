@@ -1,13 +1,17 @@
 # model_path = ''
 # image_path = ''
 # annotation_path = 'test' 
+# dir_in = ''
 
-batch_size_inference = 1024
-
-target_false_negative_rate = 0.2
+batch_size_inference = 2048
+target_false_negative_rate = 0.1
 target_false_positive = 5
+th = 0.96
 
-th = 0.95
+dir_in = ''
+model_path = ''
+annotation_path = ''
+image_path = ''
 
 # load configurations
 ##########################################################################
@@ -29,27 +33,27 @@ import pandas as pd
 
 # load model
 if torch.cuda.is_available():
-    loaded_model = torch.load(model_path + '.pt')
+    loaded_model = torch.load(dir_in + model_path + '.pt')
 else:
-    loaded_model = torch.load(model_path + '.pt',map_location=torch.device('cpu'))
+    loaded_model = torch.load(dir_in + model_path + '.pt',map_location=torch.device('cpu'))
 if isinstance(loaded_model, dict):
     model = models.ResNet(model=model_spec['model'],n_channels=model_spec['n_channels'],n_filters=model_spec['n_filters'],
         n_classes=model_spec['n_classes'],kernel_size=model_spec['kernel_size'],stride=model_spec['stride'],padding=model_spec['padding'])
     if torch.cuda.is_available():
-        model.load_state_dict(torch.load(model_path + '.pt'))
+        model.load_state_dict(torch.load(dir_in + model_path + '.pt'))
     else:
-        model.load_state_dict(torch.load(model_path + '.pt',map_location=torch.device('cpu')))
+        model.load_state_dict(torch.load(dir_in + model_path + '.pt',map_location=torch.device('cpu')))
 else:
     if torch.cuda.is_available():
-        model = torch.load(model_path + '.pt')
+        model = torch.load(dir_in + model_path + '.pt')
     else:
-        model = torch.load(model_path + '.pt',map_location=torch.device('cpu'))
+        model = torch.load(dir_in + model_path + '.pt',map_location=torch.device('cpu'))
 
 # load images
-images = np.load(image_path + '.npy')
+images = np.load(dir_in + image_path + '.npy')
 
 # load annotations
-annotation_pd = pd.read_csv(annotation_path + '.csv',index_col='index')
+annotation_pd = pd.read_csv(dir_in + annotation_path + '.csv',index_col='index')
 
 # prepare the data
 annotation_pd = annotation_pd[annotation_pd['annotation'].isin([0, 1])]
@@ -59,6 +63,7 @@ images = images[indices,]
 
 # run the model
 predictions, features = utils.generate_predictions_and_features(model,images,batch_size_inference)
+predictions = predictions.squeeze()
 
 # get the predictions for the positive and negative images
 predictions_positive = predictions[annotations==1]
@@ -67,7 +72,7 @@ positive_total = len(predictions_positive)
 negative_total = len(predictions_negative)
 
 # generate curve
-thresholds = np.arange(0,1,0.01)
+thresholds = np.arange(0,1,0.0025)
 n = len(thresholds)
 false_negative = np.zeros((n,1),dtype=float)
 false_positive = np.zeros((n,1),dtype=float)
@@ -101,8 +106,9 @@ plt.xlim((0,1))
 plt.scatter(thresholds[idx_target_false_negative_rate],false_negative[idx_target_false_negative_rate]/positive_total,color='C1')
 plt.scatter(thresholds[idx_target_false_positive],false_negative[idx_target_false_positive]/positive_total,facecolors='none',edgecolor='C1')
 plt.plot([thresholds[idx_target_false_positive],1],[false_negative[idx_target_false_positive]/positive_total,false_negative[idx_target_false_positive]/positive_total],':',color='C1')
-plt.savefig(model_path + '_' + image_path + '.png', dpi='figure')
+plt.savefig(dir_in + model_path + '_' + image_path + '.png', dpi='figure')
 
 # show false positives
 idx = np.squeeze(predictions >= th) & np.squeeze(annotations==0)
-utils_visualization.make_movie(images[idx],image_path + '_' + model_path + '_' + str(th), indices[idx], scale_factor=5, fps=5, save_images=True)
+utils_visualization.make_movie(images[idx],dir_in + image_path + '_' + model_path + '_' + str(th), scale_factor=5, fps=5)
+utils_visualization.save_images(images[idx],dir_in + image_path + '_' + model_path + '_' + str(th), indices[idx], predictions[idx], scale_factor=5)
