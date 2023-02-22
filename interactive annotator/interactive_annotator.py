@@ -681,8 +681,9 @@ class DataHandler(QObject):
         
         if self.annotations_loaded:
             if self.images.shape[0] != self.data_pd.shape[0]:
-                print('! dimension mismatch')
-                return 1
+                print('! dimension mismatch, create a new annotation file')
+                self.data_pd = pd.DataFrame({'annotation':-1},index=np.arange(self.images.shape[0]))
+                self.data_pd.index.name = 'index'
         else:
             self.data_pd = pd.DataFrame({'annotation':-1},index=np.arange(self.images.shape[0]))
             self.data_pd.index.name = 'index'
