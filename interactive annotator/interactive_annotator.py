@@ -33,6 +33,8 @@ from model_training_dialog import *
 
 import matplotlib as mpl
 
+# from superqt import QLabeledDoubleRangeSlider, QLabeledRangeSlider, QDoubleRangeSlider # not working
+
 ##########################################################
 ################  Default configurations  ################
 ##########################################################
@@ -268,8 +270,31 @@ class GalleryViewWidget(QFrame):
         self.slider.setSingleStep(1)
 
         self.entry = QSpinBox()
-        self.entry.setMinimum(0) 
+        self.entry.setMinimum(0)
         self.entry.setValue(0)
+
+        self.entry_score_min = QDoubleSpinBox()
+        self.entry_score_min.setDecimals(5)
+        self.entry_score_min.setMinimum(0)
+        self.entry_score_min.setMaximum(1)
+        self.entry_score_min.setSingleStep(0.05)
+        self.entry_score_min.setValue(0)
+
+        self.entry_score_max = QDoubleSpinBox()
+        self.entry_score_max.setDecimals(5)
+        self.entry_score_max.setMinimum(0)
+        self.entry_score_max.setMaximum(1)
+        self.entry_score_max.setSingleStep(0.05)
+        self.entry_score_max.setValue(1)
+
+        # group the range widgets
+        range_widget = QWidget()
+        range_layout = QHBoxLayout()
+        range_layout.addWidget(QLabel('Score Min'))
+        range_layout.addWidget(self.entry_score_min)
+        range_layout.addWidget(QLabel('Score Max'))
+        range_layout.addWidget(self.entry_score_max)
+        range_widget.setLayout(range_layout)
 
         self.btn_search = QPushButton('Search Similar Images')
         self.btn_show_on_UMAP = QPushButton('Show on ' + dimentionality_reduction)
@@ -278,22 +303,28 @@ class GalleryViewWidget(QFrame):
         self.btn_show_on_UMAP_live.setChecked(True)
         self.dropdown_sort = QComboBox()
         self.dropdown_sort.addItems(['Sort by prediction score','Sort by labels'])
+        self.dropdown_filter = QComboBox()
+        self.dropdown_filter.addItems(['Show all'] + ['Show ' + label for label in ANNOTATIONS_REVERSE_DICT.values()])
         if is_for_similarity_search:
             self.dropdown_sort.insertItem(0,'Sort by similarity')
             self.dropdown_sort.blockSignals(True)
             self.dropdown_sort.setCurrentIndex(0)
             self.dropdown_sort.blockSignals(False)
 
+        # self.slider_range = QDoubleRangeSlider(Qt.Orientation.Horizontal) # not working properly
+        # self.slider_range.setRange(0, 1)
+        # self.slider_range.setValue((0.1, 0.9))
+
         self.btn_annotations = {}
         for key in ANNOTATIONS_DICT.keys():
             self.btn_annotations[key] = QPushButton(key)
 
+        # add shortcuts
         self.shortcut = {}
         for key in ANNOTATIONS_DICT.keys():
             if ANNOTATIONS_DICT[key] >= 0:
                 self.shortcut[key] = QShortcut(QKeySequence(str(ANNOTATIONS_DICT[key])), self)
                 self.shortcut[key].activated.connect(self.btn_annotations[key].click)
-        
         self.shortcut['-'] = QShortcut(QKeySequence('-'), self)
         self.shortcut['-'].activated.connect(self.btn_annotations['Remove Annotation'].click)
 
@@ -304,19 +335,29 @@ class GalleryViewWidget(QFrame):
         slider.addWidget(self.entry)
         slider.addWidget(self.slider)
         grid.addLayout(slider,0,0,1,len(ANNOTATIONS_DICT))
-        # grid.addWidget(self.entry,0,0)
-        # grid.addWidget(self.slider,0,1)
-        # if self.is_main_gallery:
+
+        # grid.addWidget(self.dropdown_sort,2,0,1,len(ANNOTATIONS_DICT)-1)
+        # grid.addWidget(self.dropdown_filter,2,len(ANNOTATIONS_DICT)-1,1,1)
+        grid.addWidget(self.dropdown_sort,2,0,1,1)
+        grid.addWidget(self.dropdown_filter,2,3,1,1)
+        grid.addWidget(range_widget,2,1,1,2)
+        # grid.addWidget(self.entry_score_min,2,2,1,1)
+        # grid.addWidget(self.entry_score_max,2,3,1,1)
+
         if GENERATE_UMAP_FOR_FULL_DATASET:
-            grid.addWidget(self.btn_search,3,0,1,len(ANNOTATIONS_DICT)-1)
-            grid.addWidget(self.btn_show_on_UMAP_live,3,len(ANNOTATIONS_DICT)-1,1,1)
+            grid.addWidget(self.btn_search,4,0,1,len(ANNOTATIONS_DICT)-1)
+            grid.addWidget(self.btn_show_on_UMAP_live,4,len(ANNOTATIONS_DICT)-1,1,1)
         else:
-            grid.addWidget(self.btn_search,3,0,1,len(ANNOTATIONS_DICT)-1)
-            grid.addWidget(self.btn_show_on_UMAP,3,len(ANNOTATIONS_DICT)-1,1,1)
-        grid.addWidget(self.dropdown_sort,2,0,1,len(ANNOTATIONS_DICT))
+            grid.addWidget(self.btn_search,4,0,1,len(ANNOTATIONS_DICT)-1)
+            grid.addWidget(self.btn_show_on_UMAP,4,len(ANNOTATIONS_DICT)-1,1,1)
+        
+        # frame = QFrame()
+        # frame.setFrameShape(QFrame.HLine)
+        # grid.addWidget(frame,4,0,1,len(ANNOTATIONS_DICT))
+
         i = 0
         for key in ANNOTATIONS_DICT.keys():
-            grid.addWidget(self.btn_annotations[key],4,i)
+            grid.addWidget(self.btn_annotations[key],5,i)
             i = i + 1  
         vbox.addLayout(grid)
         self.setLayout(vbox)
@@ -332,6 +373,10 @@ class GalleryViewWidget(QFrame):
             self.btn_annotations[key].clicked.connect(functools.partial(self.assign_annotations,ANNOTATIONS_DICT[key]))
         self.btn_show_on_UMAP.clicked.connect(self.show_on_UMAP)
 
+        self.dropdown_filter.currentTextChanged.connect(self.update_label_filter)
+        self.entry_score_min.valueChanged.connect(self.dataHandler.set_filter_score_min)
+        self.entry_score_max.valueChanged.connect(self.dataHandler.set_filter_score_max)
+
     def update_page(self):
         # clear selections
         self.tableWidget.clearSelection()
@@ -343,8 +388,8 @@ class GalleryViewWidget(QFrame):
             self.tableWidget.populate_simulate(None,None)
 
     def set_total_pages(self,n):
-        self.slider.setMaximum(n-1)
-        self.entry.setMaximum(n-1) 
+        self.slider.setMaximum(max(0,n-1))
+        self.entry.setMaximum(max(0,n-1))
         self.slider.setTickInterval(int(np.ceil(n/10)))
 
     def populate_page0(self):
@@ -455,6 +500,19 @@ class GalleryViewWidget(QFrame):
         if len(selected_images) == 0:
             self.signal_selection_cleared.emit()
 
+    def update_label_filter(self,filter_text):
+        if filter_text == 'Show all':
+            self.dataHandler.set_filter_labels(ANNOTATIONS_DICT.values())
+        elif filter_text == 'Show not labeled':
+            self.dataHandler.set_filter_labels([ANNOTATIONS_DICT['Remove Annotation']])
+        elif filter_text == 'Show non-parasite':
+            self.dataHandler.set_filter_labels([ANNOTATIONS_DICT['Label as non-parasite']])
+        elif filter_text == 'Show parasite':
+            self.dataHandler.set_filter_labels([ANNOTATIONS_DICT['Label as parasite']])
+        elif filter_text == 'Show unsure':
+            self.dataHandler.set_filter_labels([ANNOTATIONS_DICT['Label as unsure']])
+
+
 class GalleryViewSettingsWidget(QFrame):
 
     signal_numRowsPerPage = pyqtSignal(int)
@@ -466,7 +524,7 @@ class GalleryViewSettingsWidget(QFrame):
         self.setFrameStyle(QFrame.Panel | QFrame.Raised)
 
         self.entry_num_rows_per_page = QSpinBox()
-        self.entry_num_rows_per_page.setMinimum(NUM_ROWS) 
+        self.entry_num_rows_per_page.setMinimum(NUM_ROWS)
         self.entry_num_rows_per_page.setValue(NUM_ROWS)
         self.entry_k_similarity_search = QSpinBox()
         self.entry_k_similarity_search.setMinimum(1)
@@ -650,6 +708,11 @@ class DataHandler(QObject):
         self.stop_requested = False
         self.signal_training_complete.connect(self.on_training_complete)
 
+        # filter for display
+        self.filter_score_min = 0
+        self.filter_score_max = 1
+        self.filter_label = ANNOTATIONS_DICT.values()
+
     def load_model(self,path):
         # check whether it's a model or model state_dict
         if torch.cuda.is_available():
@@ -697,10 +760,15 @@ class DataHandler(QObject):
         else:
             self.data_pd['output'] = -1 # placeholder value
             if self.spot_idx_sorted is None:
-                self.spot_idx_sorted = np.arange(self.images.shape[0]) # only populate the idx if it has not been populated
+                # self.spot_idx_sorted = np.arange(self.images.shape[0]) # only populate the idx if it has not been populated
+                self.spot_idx_sorted = self.data_pd[
+                    ( self.data_pd['annotation'].isin(self.filter_label) ) &
+                    ( ( self.data_pd['output'].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd['output']==-1 ) )
+                    ].index.to_numpy().astype(int) # apply the filters
 
         # display the images
-        self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
+        # self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
+        self.signal_set_total_page_count.emit(int(np.ceil(len(self.spot_idx_sorted)/self.n_images_per_page)))
         self.signal_populate_page0.emit()
         
         return 0
@@ -714,9 +782,14 @@ class DataHandler(QObject):
         
         # sort the predictions
         self.data_pd = self.data_pd.sort_values('output',ascending=False)
-        self.spot_idx_sorted = self.data_pd.index.to_numpy().astype(int)
+        # self.spot_idx_sorted = self.data_pd.index.to_numpy().astype(int)
+        self.spot_idx_sorted = self.data_pd[
+            ( self.data_pd['annotation'].isin(self.filter_label) ) &
+            ( ( self.data_pd['output'].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd['output']==-1 ) )
+            ].index.to_numpy().astype(int) # apply the filters
         
-        self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
+        # self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
+        self.signal_set_total_page_count.emit(int(np.ceil(len(self.spot_idx_sorted)/self.n_images_per_page)))
         self.signal_populate_page0.emit()
         self.signal_sorting_method.emit('Sort by prediction score')
 
@@ -788,7 +861,11 @@ class DataHandler(QObject):
 
         # sort the annotations
         self.data_pd = self.data_pd.sort_values('annotation',ascending=False)
-        self.spot_idx_sorted = self.data_pd.index.to_numpy().astype(int)
+        #self.spot_idx_sorted = self.data_pd.index.to_numpy().astype(int)
+        self.spot_idx_sorted = self.data_pd[
+            ( self.data_pd['annotation'].isin(self.filter_label) ) &
+            ( ( self.data_pd['output'].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd['output']==-1 ) )
+            ].index.to_numpy().astype(int) # apply the filters
         self.signal_sorting_method.emit('Sort by labels')
         
         # update the display if images have been loaded already
@@ -800,7 +877,9 @@ class DataHandler(QObject):
         
     def set_number_of_images_per_page(self,n):
         self.n_images_per_page = n
-        self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
+        if self.spot_idx_sorted is not None:
+            # self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
+            self.signal_set_total_page_count.emit(int(np.ceil(len(self.spot_idx_sorted)/self.n_images_per_page)))
 
     def set_k_similar(self,k):
         self.k_similar = k
@@ -813,20 +892,20 @@ class DataHandler(QObject):
 
     def get_page(self,page_number):
         idx_start = self.n_images_per_page*page_number
-        idx_end = min(self.n_images_per_page*(page_number+1),self.images.shape[0])
+        idx_end = min(self.n_images_per_page*(page_number+1),self.images[self.spot_idx_sorted,:].shape[0])
         images = generate_overlay(self.images[self.spot_idx_sorted[idx_start:idx_end],:,:,:])
         texts = []
         image_id = []
         annotations = []
         for i in range(idx_start,idx_end):
             # texts.append( '[' + str(i) + ']  ' + str(self.data_pd.iloc[i]['index']) + ': ' + "{:.2f}".format(self.data_pd.iloc[i]['output']))
-            if self.is_for_similarity_search:
-                texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.data_pd.iloc[i]['output']) + '\n{:.1e}'.format(self.data_pd.iloc[i]['distance'])) # .at would use the idx before sorting # + '{:.1e}'.format(self.data_pd.iloc[i]['distances'])
-
+            if self.is_for_similarity_search or self.is_for_selected_images:
+                texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.data_pd_local.loc[self.spot_idx_sorted[i]]['output']) + '\n{:.1e}'.format(self.data_pd_local.loc[self.spot_idx_sorted[i]]['distance'])) # + '{:.1e}'.format(self.data_pd.iloc[i]['distances'])
+                annotations.append(int(self.data_pd_local.loc[self.spot_idx_sorted[i]]['annotation']))
             else:
-                texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.data_pd.iloc[i]['output'])) # .at would use the idx before sorting
-            image_id.append(int(self.data_pd.index[i]))
-            annotations.append(int(self.data_pd.iloc[i]['annotation']))
+                texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.data_pd.loc[self.spot_idx_sorted[i]]['output']))
+                annotations.append(int(self.data_pd.loc[self.spot_idx_sorted[i]]['annotation']))
+            image_id.append( self.spot_idx_sorted[i] )
         return images, texts, image_id, annotations
 
     def sort(self,criterion):
@@ -840,9 +919,17 @@ class DataHandler(QObject):
         
         # update the sorted spot idx
         if self.is_for_similarity_search or self.is_for_selected_images:
-            self.spot_idx_sorted = self.data_pd['idx_local'].to_numpy().astype(int)
+            # self.spot_idx_sorted = self.data_pd['idx_local'].to_numpy().astype(int)
+            self.spot_idx_sorted = self.data_pd[
+                    ( self.data_pd['annotation'].isin(self.filter_label) ) &
+                    ( ( self.data_pd['output'].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd['output']==-1 ) )
+                    ]['idx_local'].to_numpy().astype(int) # apply the filters
         else:
-            self.spot_idx_sorted = self.data_pd.index.to_numpy().astype(int)
+            #self.spot_idx_sorted = self.data_pd.index.to_numpy().astype(int)
+            self.spot_idx_sorted = self.data_pd[
+                ( self.data_pd['annotation'].isin(self.filter_label) ) &
+                ( ( self.data_pd['output'].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd['output']==-1 ) )
+                ].index.to_numpy().astype(int) # apply the filters
         self.signal_populate_page0.emit()
         self.signal_sorting_method.emit(criterion)
 
@@ -861,13 +948,20 @@ class DataHandler(QObject):
     def populate_similarity_search(self,images,indices,scores,distances,annotations):
         self.images = images
         self.data_pd = pd.DataFrame({'idx_global':indices,'idx_local':np.arange(self.images.shape[0]).astype(int),'output':scores, 'distance':distances, 'annotation':annotations},index=indices) # idx_local for indexing the spot images
+        self.data_pd_local = self.data_pd.copy()
         self.data_pd = self.data_pd.set_index('idx_global')
+        self.data_pd_local = self.data_pd_local.set_index('idx_local')
         print('populated data_pd of the similarity search data handler:')
         print(self.data_pd)
         self.images_loaded = True
         # self.spot_idx_sorted = self.data_pd['index'].to_numpy().astype(int)
-        self.spot_idx_sorted = np.arange(self.images.shape[0]).astype(int)
-        self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
+        # self.spot_idx_sorted = np.arange(self.images.shape[0]).astype(int)
+        self.spot_idx_sorted = self.data_pd[
+            ( self.data_pd['annotation'].isin(self.filter_label) ) &
+            ( ( self.data_pd['output'].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd['output']==-1 ) )
+            ]['idx_local'].to_numpy().astype(int) # apply the filters
+        # self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
+        self.signal_set_total_page_count.emit(int(np.ceil(len(self.spot_idx_sorted)/self.n_images_per_page)))
         self.signal_populate_page0.emit()
 
     def prepare_selected_images(self,indices):
@@ -880,13 +974,20 @@ class DataHandler(QObject):
     def populate_selected_images(self,images,indices,scores,annotations):
         self.images = images
         self.data_pd = pd.DataFrame({'idx_global':indices,'idx_local':np.arange(self.images.shape[0]).astype(int),'output':scores, 'annotation':annotations},index=indices) # idx_local for indexing the spot images
+        self.data_pd_local = self.data_pd.copy()
         self.data_pd = self.data_pd.set_index('idx_global')
+        self.data_pd_local = self.data_pd_local.set_index('idx_local')
         print('populated data_pd of the selected images data handler:')
         print(self.data_pd)
         self.images_loaded = True
         # self.spot_idx_sorted = self.data_pd['index'].to_numpy().astype(int)
-        self.spot_idx_sorted = np.arange(self.images.shape[0]).astype(int)
-        self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
+        # self.spot_idx_sorted = np.arange(self.images.shape[0]).astype(int)
+        self.spot_idx_sorted = self.data_pd[
+            ( self.data_pd['annotation'].isin(self.filter_label) ) &
+            ( ( self.data_pd['output'].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd['output']==-1 ) )
+            ]['idx_local'].to_numpy().astype(int) # apply the filters
+        # self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
+        self.signal_set_total_page_count.emit(int(np.ceil(len(self.spot_idx_sorted)/self.n_images_per_page)))
         self.signal_populate_page0.emit()
 
     def update_annotation(self,index,annotation):
@@ -947,6 +1048,62 @@ class DataHandler(QObject):
                 umap_embeddings = self.reducer.transform(self.embeddings[index,])
                 self.signal_umap_embedding.emit(umap_embeddings[:,0],umap_embeddings[:,1])
 
+    def set_filter_score_min(self,score):
+        self.filter_score_min = score
+        if self.data_pd is not None:
+            if self.is_for_similarity_search or self.is_for_selected_images:
+                # self.spot_idx_sorted = self.data_pd['idx_local'].to_numpy().astype(int)
+                self.spot_idx_sorted = self.data_pd[
+                        ( self.data_pd['annotation'].isin(self.filter_label) ) &
+                        ( ( self.data_pd['output'].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd['output']==-1 ) )
+                        ]['idx_local'].to_numpy().astype(int) # apply the filters
+            else:
+                #self.spot_idx_sorted = self.data_pd.index.to_numpy().astype(int)
+                self.spot_idx_sorted = self.data_pd[
+                    ( self.data_pd['annotation'].isin(self.filter_label) ) &
+                    ( ( self.data_pd['output'].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd['output']==-1 ) )
+                    ].index.to_numpy().astype(int) # apply the filters
+            if self.spot_idx_sorted is not None:
+                self.signal_set_total_page_count.emit(int(np.ceil(len(self.spot_idx_sorted)/self.n_images_per_page)))
+                self.signal_populate_page0.emit()
+
+    def set_filter_score_max(self,score):
+        self.filter_score_max = score
+        if self.data_pd is not None:
+            if self.is_for_similarity_search or self.is_for_selected_images:
+                # self.spot_idx_sorted = self.data_pd['idx_local'].to_numpy().astype(int)
+                self.spot_idx_sorted = self.data_pd[
+                        ( self.data_pd['annotation'].isin(self.filter_label) ) &
+                        ( ( self.data_pd['output'].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd['output']==-1 ) )
+                        ]['idx_local'].to_numpy().astype(int) # apply the filters
+            else:
+                #self.spot_idx_sorted = self.data_pd.index.to_numpy().astype(int)
+                self.spot_idx_sorted = self.data_pd[
+                    ( self.data_pd['annotation'].isin(self.filter_label) ) &
+                    ( ( self.data_pd['output'].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd['output']==-1 ) )
+                    ].index.to_numpy().astype(int) # apply the filters
+            if self.spot_idx_sorted is not None:
+                self.signal_set_total_page_count.emit(int(np.ceil(len(self.spot_idx_sorted)/self.n_images_per_page)))
+                self.signal_populate_page0.emit()
+
+    def set_filter_labels(self,labels):
+        self.filter_label = labels
+        if self.data_pd is not None:
+            if self.is_for_similarity_search or self.is_for_selected_images:
+                # self.spot_idx_sorted = self.data_pd['idx_local'].to_numpy().astype(int)
+                self.spot_idx_sorted = self.data_pd[
+                        ( self.data_pd['annotation'].isin(self.filter_label) ) &
+                        ( ( self.data_pd['output'].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd['output']==-1 ) )
+                        ]['idx_local'].to_numpy().astype(int) # apply the filters
+            else:
+                #self.spot_idx_sorted = self.data_pd.index.to_numpy().astype(int)
+                self.spot_idx_sorted = self.data_pd[
+                    ( self.data_pd['annotation'].isin(self.filter_label) ) &
+                    ( ( self.data_pd['output'].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd['output']==-1 ) )
+                    ].index.to_numpy().astype(int) # apply the filters
+            if self.spot_idx_sorted is not None:
+                self.signal_set_total_page_count.emit(int(np.ceil(len(self.spot_idx_sorted)/self.n_images_per_page)))
+                self.signal_populate_page0.emit()
 
 ###########################################################################################
 #####################################  Matplotlib   #######################################
@@ -1017,7 +1174,7 @@ class BarPlotWidget(QWidget):
         self.axes.spines['right'].set_visible(False)
         legend = self.axes.legend(self.labels,loc='upper center',bbox_to_anchor=(0.5, 0.075),fancybox=True,ncol=int(len(self.labels)/2))
         bbox = legend.get_window_extent()
-        # self.view.figure.set_size_inches(1.2*bbox.width/self.view.figure.dpi, self.view.figure.get_size_inches()[1]) 
+        # self.view.figure.set_size_inches(1.2*bbox.width/self.view.figure.dpi, self.view.figure.get_size_inches()[1])
         # self.view.setMinimumSize(self.view.sizeHint())
         # self.view.setMinimumSize(self.view.size())       
         self.view.draw()
@@ -1265,7 +1422,7 @@ class MainWindow(QMainWindow):
         # similarity search
         self.gallery.signal_similaritySearch.connect(self.dataHandler_similarity.populate_similarity_search)
         self.gallery.signal_switchTab.connect(self.switch_tab)
-        # signal_updatePage will only be emitted by non-main galleries - (annotating in other galleries will not change the displayed annotations in the current page of the main gallery) 
+        # signal_updatePage will only be emitted by non-main galleries - (annotating in other galleries will not change the displayed annotations in the current page of the main gallery)
 
         self.gallery_similarity.signal_similaritySearch.connect(self.dataHandler_similarity.populate_similarity_search)
         self.gallery_similarity.signal_updatePage.connect(self.gallery.update_page)
