@@ -897,6 +897,7 @@ class DataHandler(QObject):
         texts = []
         image_id = []
         annotations = []
+        '''
         for i in range(idx_start,idx_end):
             # texts.append( '[' + str(i) + ']  ' + str(self.data_pd.iloc[i]['index']) + ': ' + "{:.2f}".format(self.data_pd.iloc[i]['output']))
             if self.is_for_similarity_search:
@@ -909,6 +910,21 @@ class DataHandler(QObject):
                 texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.data_pd.loc[self.spot_idx_sorted[i]]['output']))
                 annotations.append(int(self.data_pd.loc[self.spot_idx_sorted[i]]['annotation']))
             image_id.append( self.spot_idx_sorted[i] )
+        '''
+        for i in range(idx_start,idx_end):
+            # texts.append( '[' + str(i) + ']  ' + str(self.data_pd.iloc[i]['index']) + ': ' + "{:.2f}".format(self.data_pd.iloc[i]['output']))
+            if self.is_for_similarity_search:
+                texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.data_pd_local.loc[self.spot_idx_sorted[i]]['output']) + '\n{:.1e}'.format(self.data_pd_local.loc[self.spot_idx_sorted[i]]['distance'])) # + '{:.1e}'.format(self.data_pd.iloc[i]['distances'])
+                annotations.append(int(self.data_pd_local.loc[self.spot_idx_sorted[i]]['annotation']))
+                image_id.append( int(self.data_pd_local.loc[self.spot_idx_sorted[i]]['idx_global']) )
+            elif self.is_for_selected_images:
+                texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.data_pd_local.loc[self.spot_idx_sorted[i]]['output']) ) # + '{:.1e}'.format(self.data_pd.iloc[i]['distances'])
+                annotations.append(int(self.data_pd_local.loc[self.spot_idx_sorted[i]]['annotation']))
+                image_id.append( int(self.data_pd_local.loc[self.spot_idx_sorted[i]]['idx_global']) )
+            else:
+                texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.data_pd.loc[self.spot_idx_sorted[i]]['output']))
+                annotations.append(int(self.data_pd.loc[self.spot_idx_sorted[i]]['annotation']))
+                image_id.append( self.spot_idx_sorted[i] )
         return images, texts, image_id, annotations
 
     def sort(self,criterion):
@@ -950,7 +966,7 @@ class DataHandler(QObject):
 
     def populate_similarity_search(self,images,indices,scores,distances,annotations):
         self.images = images
-        self.data_pd = pd.DataFrame({'idx_global':indices,'idx_local':np.arange(self.images.shape[0]).astype(int),'output':scores, 'distance':distances, 'annotation':annotations},index=indices) # idx_local for indexing the spot images
+        self.data_pd = pd.DataFrame({'idx_global':indices,'idx_local':np.arange(self.images.shape[0]).astype(int),'output':scores, 'distance':distances, 'annotation':annotations}) # idx_local for indexing the spot images
         self.data_pd_local = self.data_pd.copy()
         self.data_pd = self.data_pd.set_index('idx_global')
         self.data_pd_local = self.data_pd_local.set_index('idx_local')
@@ -998,6 +1014,13 @@ class DataHandler(QObject):
         # to-do: support dealing with multiple datasets using multi-level indexing
         self.data_pd.loc[index,'annotation'] = annotation
         if self.is_for_similarity_search or self.is_for_selected_images:
+            # index_local = self.data_pd.loc[pd.Index(index),'idx_local'].tolist()
+            if isinstance(index, int):  # If selected_rows is an integer
+                index = [index]
+            elif isinstance(index, tuple):  # If selected_rows is a tuple
+                index = list(index)
+            index_local = self.data_pd.loc[index,'idx_local'].tolist()
+            self.data_pd_local.loc[index_local,'annotation'] = annotation # 20230323 - maybe data_pd_local is not useful
             print(self.data_pd)
         self.update_annotation_stats() # note - can also do it increamentally instead of going through the full df everytime
 
