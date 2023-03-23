@@ -899,8 +899,11 @@ class DataHandler(QObject):
         annotations = []
         for i in range(idx_start,idx_end):
             # texts.append( '[' + str(i) + ']  ' + str(self.data_pd.iloc[i]['index']) + ': ' + "{:.2f}".format(self.data_pd.iloc[i]['output']))
-            if self.is_for_similarity_search or self.is_for_selected_images:
+            if self.is_for_similarity_search:
                 texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.data_pd_local.loc[self.spot_idx_sorted[i]]['output']) + '\n{:.1e}'.format(self.data_pd_local.loc[self.spot_idx_sorted[i]]['distance'])) # + '{:.1e}'.format(self.data_pd.iloc[i]['distances'])
+                annotations.append(int(self.data_pd_local.loc[self.spot_idx_sorted[i]]['annotation']))
+            elif self.is_for_selected_images:
+                texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.data_pd_local.loc[self.spot_idx_sorted[i]]['output']) ) # + '{:.1e}'.format(self.data_pd.iloc[i]['distances'])
                 annotations.append(int(self.data_pd_local.loc[self.spot_idx_sorted[i]]['annotation']))
             else:
                 texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.data_pd.loc[self.spot_idx_sorted[i]]['output']))
