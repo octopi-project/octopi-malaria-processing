@@ -48,7 +48,7 @@ if __name__ == '__main__':
   # deterimine the size of the scan
   fs = gcsfs.GCSFileSystem(project=gcs_project,token=gcs_token)
 
-  f = open('list_of_datasets_uganda_2022.txt','r')
+  f = open('list of datasets.txt','r')
   DATASET_ID = f.read()
   DATASET_ID = DATASET_ID.split('\n')
   f.close()
@@ -78,7 +78,7 @@ if __name__ == '__main__':
 
     # processing
     print('processing ' + dataset_id + ' in ' + bucket_source)
-    with get_context("spawn").Pool(processes=8) as pool:
+    with get_context("spawn").Pool(processes=6) as pool:
       pool.map(partial(process_column,gcs_settings=gcs_settings,dataset_id=dataset_id,parameters=parameters,settings=settings),columns)
 
     if pooling_and_plotting:

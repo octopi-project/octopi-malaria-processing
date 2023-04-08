@@ -41,6 +41,7 @@ def process_column(j,gcs_settings,dataset_id,parameters,settings,fs=None):
         if i == 1 and j == 1:
           with fs.open( bucket_destination + '/spot_detection_result/' + dataset_id + '_' + file_id + '.png', 'wb' ) as f:
             f.write(cv2.imencode('.png',I_boxed)[1].tobytes())
+          cv2.imwrite('spot_detection_result/' + dataset_id + '_' + file_id + '.png',I_boxed)
       # save the spot list
       with fs.open( bucket_destination + '/' + dataset_id + '/' + 'spot_lists/' + file_id + '.csv', 'wb' ) as f:
         np.savetxt(f,spot_list,fmt=('%d','%d','%.1f'),delimiter=',')
