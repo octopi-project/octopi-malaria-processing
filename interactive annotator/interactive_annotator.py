@@ -451,9 +451,26 @@ class GalleryViewWidget(QFrame):
 
     def export_selected_images(self):
         # pick selected images and export
-        selected_image_ids = self.tableWidget.get_selected_cells_og_ids()
-        # selected_images = [i for i in selected_images if i < len(self.image_id)] # filter it 
-        print(selected_image_ids)
+        selected_image_ids = self.tableWidget.get_selected_cells_og_ids() # original IDs of selected images
+        selected_images = [self.dataHandler.images[i,:,:,:] for i in selected_image_ids] # np array of selected images 
+
+        timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M')
+        default_dataset_id = os.path.splitext(self.dataHandler.image_path)[0] + '_selected_images_' + timestamp + '.npy'
+
+        dialog = QFileDialog()
+
+        # Set the file dialog options
+        dialog.setAcceptMode(QFileDialog.AcceptSave)
+        dialog.setNameFilter("Numpy Array Files (*.npy)")  # Set the file filter
+
+        # Show the dialog with the default file name and get the selected file path
+        filename, _ = dialog.getSaveFileName(None, "Save Numpy Array", default_dataset_id, "Numpy Array Files (*.npy)")
+
+        if filename:
+            np.save(filename, selected_images)
+            print('Exported images: ' + str(selected_image_ids) + ' to ' + filename)
+        else:
+            print('No file selected.')
 
     def update_displayed_sorting_method(self,sorting_method):
         self.dropdown_sort.blockSignals(True)
@@ -928,6 +945,10 @@ class DataHandler(QObject):
     def get_page(self,page_number):
         idx_start = self.n_images_per_page*page_number
         idx_end = min(self.n_images_per_page*(page_number+1),self.images[self.spot_idx_sorted,:].shape[0])
+        # TODO: when we try to load a smaller set of images when a set is already loaded, 
+        # there is an issue with the above line and self.spot_idx_sorted being out of bounds. maybe spot_idx_sorted isn't updated yet?
+        print(self.images[self.spot_idx_sorted,:].shape[0]-1)
+        print(idx_end)
         images = generate_overlay(self.images[self.spot_idx_sorted[idx_start:idx_end],:,:,:])
         texts = []
         image_id = []
