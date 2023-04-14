@@ -222,6 +222,13 @@ class TableWidget(QTableWidget):
              list_of_selected_cells.append( index.row()*self.num_cols + index.column() )
         return(list_of_selected_cells)
 
+    def get_selected_cells_og_ids(self):
+        list_of_selected_cells = []
+        for index in self.selectedIndexes():
+             # list_of_selected_cells.append((index.row(),index.column()))
+             list_of_selected_cells.append( self.id[index.row()*self.num_cols + index.column()] )
+        return(list_of_selected_cells)
+
     def set_number_of_rows(self,rows):
         self.num_rows = rows
         self.setRowCount(rows)
@@ -297,6 +304,7 @@ class GalleryViewWidget(QFrame):
         range_widget.setLayout(range_layout)
 
         self.btn_search = QPushButton('Search Similar Images')
+        self.btn_export = QPushButton('Export Selected Images') # NEW
         self.btn_show_on_UMAP = QPushButton('Show on ' + dimentionality_reduction)
         self.btn_show_on_UMAP_live = QPushButton('Show on ' + dimentionality_reduction + ' live')
         self.btn_show_on_UMAP_live.setCheckable(True)
@@ -345,11 +353,13 @@ class GalleryViewWidget(QFrame):
         # grid.addWidget(self.entry_score_max,2,3,1,1)
 
         if GENERATE_UMAP_FOR_FULL_DATASET:
-            grid.addWidget(self.btn_search,4,0,1,len(ANNOTATIONS_DICT)-1)
-            grid.addWidget(self.btn_show_on_UMAP_live,4,len(ANNOTATIONS_DICT)-1,1,1)
+            grid.addWidget(self.btn_search,4,0,1,len(ANNOTATIONS_DICT)-2)
+            grid.addWidget(self.btn_show_on_UMAP_live,4,len(ANNOTATIONS_DICT)-2,1,1)
+            grid.addWidget(self.btn_export,4,len(ANNOTATIONS_DICT)-1,1,1)
         else:
-            grid.addWidget(self.btn_search,4,0,1,len(ANNOTATIONS_DICT)-1)
-            grid.addWidget(self.btn_show_on_UMAP,4,len(ANNOTATIONS_DICT)-1,1,1)
+            grid.addWidget(self.btn_search,4,0,1,len(ANNOTATIONS_DICT)-2)
+            grid.addWidget(self.btn_show_on_UMAP,4,len(ANNOTATIONS_DICT)-2,1,1)
+            grid.addWidget(self.btn_export,4,len(ANNOTATIONS_DICT)-1,1,1)
         
         # frame = QFrame()
         # frame.setFrameShape(QFrame.HLine)
@@ -367,6 +377,7 @@ class GalleryViewWidget(QFrame):
         self.slider.valueChanged.connect(self.entry.setValue)
         self.entry.valueChanged.connect(self.update_page)
         self.btn_search.clicked.connect(self.do_similarity_search)
+        self.btn_export.clicked.connect(self.export_selected_images)
         self.dropdown_sort.currentTextChanged.connect(self.dataHandler.sort)
         self.dataHandler.signal_sorting_method.connect(self.update_displayed_sorting_method)
         for key in ANNOTATIONS_DICT.keys():
@@ -437,6 +448,12 @@ class GalleryViewWidget(QFrame):
         # emit the results
         self.signal_similaritySearch.emit(images,indices,scores,distances,annotations)
         self.signal_switchTab.emit()
+
+    def export_selected_images(self):
+        # pick selected images and export
+        selected_image_ids = self.tableWidget.get_selected_cells_og_ids()
+        # selected_images = [i for i in selected_images if i < len(self.image_id)] # filter it 
+        print(selected_image_ids)
 
     def update_displayed_sorting_method(self,sorting_method):
         self.dropdown_sort.blockSignals(True)
@@ -739,12 +756,22 @@ class DataHandler(QObject):
             self.signal_populate_page0.emit()
 
     def load_images(self,path):
+        # path_tmp = self.image_path
+        # data_pd_tmp = self.data_pd.copy()
         self.images = np.load(path)
         self.image_path = path
         
         if self.annotations_loaded:
+            # # save the previous data_pd
+            # if 'output' in data_pd_tmp.columns:
+            #     data_pd_tmp = data_pd_tmp.drop(columns=['output'])
+            # if data_pd_tmp.index.name is None:
+            #     data_pd_tmp.set_index('index')
+            # current_time = datetime.now().strftime('%Y-%m-%d_%H-%M')
+            # data_pd_tmp.to_csv(os.path.splitext(path_tmp)[0] + '_annotations_' + str(sum(data_pd_tmp['annotation']!=-1)) + '_' + str(data_pd_tmp.shape[0])  + '_' + current_time + '.csv')
+
             if self.images.shape[0] != self.data_pd.shape[0]:
-                print('! dimension mismatch, create a new annotation file')
+                print('! dimension mismatch, create a new annotation file.')
                 self.data_pd = pd.DataFrame({'annotation':-1},index=np.arange(self.images.shape[0]))
                 self.data_pd.index.name = 'index'
         else:
@@ -816,7 +843,15 @@ class DataHandler(QObject):
 
         # if not os.path.exists('training records'):
         #     os.makedirs('training records')
-        data_annotated_pd[['annotation']].to_csv(os.path.splitext(self.image_path)[0] + '_annotations_' + timestamp + '.csv')
+        # TODO: save both versions of annotation (otherwise it gets lost)
+        # first save the annotation df with all image labels (including -1)
+        if 'output' in self.data_pd.columns:
+            self.data_pd = self.data_pd.drop(columns=['output'])
+        self.data_pd.index.name = 'index'
+        self.data_pd.to_csv(os.path.splitext(self.image_path)[0] + '_annotations_' + str(sum(self.data_pd['annotation']!=-1)) + '_' + str(self.data_pd.shape[0])  + '_' + timestamp + '.csv')
+        # next save the df with only annotated image labels (no -1) that's used for model training
+        data_annotated_pd.index.name = 'index'
+        data_annotated_pd[['annotation']].to_csv(os.path.splitext(self.image_path)[0] + '_annotations_for_model_' + timestamp + '.csv')
 
         # init the model
         if reset_model or self.model_loaded==False:
@@ -1036,13 +1071,13 @@ class DataHandler(QObject):
             # remove the prediction score
             if 'output' in self.data_pd.columns:
                 self.data_pd = self.data_pd.drop(columns=['output'])
+            # set index name
+            self.data_pd.index.name = 'index'
             # save the annotations
             current_time = datetime.now().strftime('%Y-%m-%d_%H-%M')
+            print('\n hi \n')
             self.data_pd.to_csv(os.path.splitext(self.image_path)[0] + '_annotations_' + str(sum(self.data_pd['annotation']!=-1)) + '_' + str(self.data_pd.shape[0])  + '_' + current_time + '.csv')
-            # remove the temporary file
-            tmp_file = os.path.dirname(self.image_path)+'_tmp.csv'
-            if os.path.exists(tmp_file):
-                os.remove(tmp_file)
+
 
     def generate_UMAP_visualization(self,n_max):
         if USE_UMAP:
