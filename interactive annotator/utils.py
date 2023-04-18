@@ -59,7 +59,7 @@ def generate_predictions_and_features(model,images,batch_size):
     return predictions, features
 
 
-def train_model(model,images,annotations,batch_size,n_epochs,model_name,reset=False,caller=None):
+def train_model(model,images,annotations,batch_size,n_epochs,model_name,annotations_dict,reset=False,caller=None):
 
     model_best = None
 
@@ -98,7 +98,9 @@ def train_model(model,images,annotations,batch_size,n_epochs,model_name,reset=Fa
     FN_accum = 0
 
     # Define the loss function and optimizer
-    criterion = nn.BCEWithLogitsLoss()
+    # criterion = nn.BCEWithLogitsLoss()
+    # can add weight parameter to differently weight classes; can also add label_smoothing to avoid overfitting
+    criterion = nn.CrossEntropyLoss()
     optimizer = Adam(model.parameters(), lr=1e-3)
 
     # Training loops
@@ -127,7 +129,8 @@ def train_model(model,images,annotations,batch_size,n_epochs,model_name,reset=Fa
             
             # Forward pass
             outputs = model(inputs)
-            outputs = outputs.view(-1)
+            # outputs = outputs.view(-1) # maybe this is just for binary
+            labels = labels.to(torch.long)
             loss = criterion(outputs, labels)
 
             # Backward and optimize
@@ -135,13 +138,20 @@ def train_model(model,images,annotations,batch_size,n_epochs,model_name,reset=Fa
             loss.backward()
             optimizer.step()
 
-            # Squash the outputs using sigmoid function
-            outputs = torch.sigmoid(outputs)
+            # Squash the outputs using sigmoid function for binary
+            # outputs = torch.sigmoid(outputs) 
+            # Squash the outputs using the softmax function for multiclass
+            outputs = torch.softmax(outputs, dim = 1)
 
             # Threshold the outputs to obtain the predictions
-            predictions = (outputs > 0.5).float()
-            predictions = predictions.view(-1)
+            # predictions = (outputs > 0.5).float()
+            # predictions = predictions.view(-1)
+            # Use argmax to get the class index with the highest probability
+            predictions = torch.argmax(outputs, dim = 1)
+            # annotations_values = [key for key in annotations_dict.keys() if key != -1]
+            # predictions = torch.tensor([annotations_values[i] for i in prediction_indices]).to(device)
 
+            # TODO: fix TP, etc. for multiclass
             TP = ((predictions == 1) & (labels == 1)).sum().item()
             TN = ((predictions == 0) & (labels == 0)).sum().item()
             FP = ((predictions == 1) & (labels == 0)).sum().item()
@@ -155,12 +165,19 @@ def train_model(model,images,annotations,batch_size,n_epochs,model_name,reset=Fa
 
             running_loss += loss.item()
 
-        FPR = FP_accum / (FP_accum + TN_accum)
-        FNR = FN_accum / (FN_accum + TP_accum)
+        if FP_accum + TN_accum > 0:
+            FPR = FP_accum / (FP_accum + TN_accum)
+        else:
+            FPR = np.NAN
+
+        if FN_accum + TP_accum > 0:
+            FNR = FN_accum / (FN_accum + TP_accum)
+        else:
+            FNR = np.NAN
         print('Epoch {}: FPR: {:.4f} FNR: {:.4f}'.format(epoch+1, FPR, FNR))
 
         # Compute the validation performance
-        validation_loss = evaluate_model(model, val_dataloader, criterion, device)
+        validation_loss = evaluate_model(model, val_dataloader, criterion, device, annotations_dict)
         if validation_loss < best_validation_loss:
             best_validation_loss = validation_loss
             # torch.save(model.state_dict(), 'best_model.pt')
@@ -181,7 +198,7 @@ def train_model(model,images,annotations,batch_size,n_epochs,model_name,reset=Fa
             torch.save(model, model_name + '.pt')
         caller.signal_training_complete.emit()
 
-def evaluate_model(model, dataloader, criterion, device):
+def evaluate_model(model, dataloader, criterion, device, annotations_dict):
 
     TP_accum = 0
     TN_accum = 0
@@ -198,18 +215,29 @@ def evaluate_model(model, dataloader, criterion, device):
             # labels = labels.cuda()
             inputs = inputs.float().to(device)
             labels = labels.float().to(device)
+
+            # Forward pass
             outputs = model(inputs)
-            outputs = outputs.view(-1)
+            # outputs = outputs.view(-1) # maybe this is just for binary
+            labels = labels.to(torch.long)
             loss = criterion(outputs, labels)
+
             total_loss += loss.item()
 
-            # Squash the outputs using sigmoid function
-            outputs = torch.sigmoid(outputs)
+            # Squash the outputs using sigmoid function for binary
+            # outputs = torch.sigmoid(outputs) 
+            # Squash the outputs using the softmax function for multiclass
+            outputs = torch.softmax(outputs, dim = 1)
 
             # Threshold the outputs to obtain the predictions
-            predictions = (outputs > 0.5).float()
-            predictions = predictions.view(-1)
+            # predictions = (outputs > 0.5).float()
+            # predictions = predictions.view(-1)
+            # Use argmax to get the class index with the highest probability
+            predictions = torch.argmax(outputs, dim = 1)
+            # annotations_values = [key for key in annotations_dict.keys() if key != -1]
+            # predictions = torch.tensor([annotations_values[i] for i in prediction_indices]).to(device)
 
+            # TODO: fix TP, etc. for multiclass
             TP = ((predictions == 1) & (labels == 1)).sum().item()
             TN = ((predictions == 0) & (labels == 0)).sum().item()
             FP = ((predictions == 1) & (labels == 0)).sum().item()
