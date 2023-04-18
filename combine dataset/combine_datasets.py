@@ -1,9 +1,9 @@
 import numpy as np
 import pandas as pd
 
-# data_dir = ''
-# dataset_id = ['']
-# annotation_dict = {'data_id':'annotation_file_name'}
+# data_dir = '/home/rinni/Desktop/Octopi/data/unsure-image-training'
+# dataset_id = ['7_unsure_negative_images_2023-04-13_18-46', 'PAT-071-3_2023-01-22_15-47-3.096602_definitely_positive_images_2023-04-13_18-50', 'PAT-073-1_2023-01-22_16-32-5.192404_unsure_positive_images_2023-04-13_18-37']
+# annotation_dict = {dataset_id[0]:'7_unsure_negative_images_2023-04-13_18-46_annotations', dataset_id[1]:'PAT-071-3_2023-01-22_15-47-3.096602_definitely_positive_images_2023-04-13_18-50_annotations', dataset_id[2]:'PAT-073-1_2023-01-22_16-32-5.192404_unsure_positive_images_2023-04-13_18-37_annotations'}
 
 ##########################################################################
 config_files = glob.glob('.' + '/' + 'def*.txt')
@@ -44,6 +44,8 @@ annotations = np.concatenate(annotations)
 print(images.shape)
 
 np.save(data_dir + '/' + str(dataset_id) + ' .npy',images)
+# np.save(data_dir + '/combined_unsure.npy',images)
 df = pd.DataFrame({'annotation':annotations})
 df.index.name = 'index'
 df.to_csv(data_dir + '/' + str(dataset_id) + '.csv')
+# df.to_csv(data_dir + '/combined_unsure.csv')
