@@ -304,19 +304,15 @@ class GalleryViewWidget(QFrame):
         range_widget.setLayout(range_layout)
 
         self.btn_search = QPushButton('Search Similar Images')
-        self.btn_export = QPushButton('Export Selected Images') # NEW
+        self.btn_export = QPushButton('Export Selected Images')
         self.btn_show_on_UMAP = QPushButton('Show on ' + dimentionality_reduction)
         self.btn_show_on_UMAP_live = QPushButton('Show on ' + dimentionality_reduction + ' live')
         self.btn_show_on_UMAP_live.setCheckable(True)
         self.btn_show_on_UMAP_live.setChecked(True)
         self.dropdown_sort = QComboBox()
-        # OLD
-        # self.dropdown_sort.addItems(['Sort by prediction score','Sort by labels'])
-        # NEW
         sorting_labels = np.array(list(ANNOTATIONS_REVERSE_DICT.values()))
         sorting_labels = sorting_labels[np.array(list(ANNOTATIONS_REVERSE_DICT.keys())) >= 0] 
         self.dropdown_sort.addItems(['Sort by ' + label + ' prediction score' for label in sorting_labels] + ['Sort by labels'])
-        # END
         self.dropdown_filter = QComboBox()
         self.dropdown_filter.addItems(['Show all'] + ['Show ' + label for label in ANNOTATIONS_REVERSE_DICT.values()])
         if is_for_similarity_search:
@@ -387,15 +383,21 @@ class GalleryViewWidget(QFrame):
         self.btn_show_on_UMAP.clicked.connect(self.show_on_UMAP)
 
         self.dropdown_filter.currentTextChanged.connect(self.update_label_filter)
-        self.entry_score_min.valueChanged.connect(self.dataHandler.set_filter_score_min)
-        self.entry_score_max.valueChanged.connect(self.dataHandler.set_filter_score_max)
+        self.entry_score_min.valueChanged.connect(lambda value: self.dataHandler.set_filter_score_min(value, self.dropdown_sort.currentText()))
+        self.entry_score_max.valueChanged.connect(lambda value: self.dataHandler.set_filter_score_max(value, self.dropdown_sort.currentText()))
 
     def update_page(self):
         # clear selections
         self.tableWidget.clearSelection()
         # self.tableWidget.populate_simulate(None,None)
         if self.dataHandler is not None and self.dataHandler.images is not None:
-            images,texts,self.image_id,annotations = self.dataHandler.get_page(self.entry.value())
+            # set output_label = column for what we're sorting by 
+            output_label = str(self.dropdown_sort.currentText())
+            if output_label.find('prediction') != -1:
+                output_label = output_label[output_label.find('by ') + len('by '):output_label.find(' prediction')] + ' output'
+            else:
+                output_label = ANNOTATIONS_REVERSE_DICT[1] + ' output' # default
+            images,texts,self.image_id,annotations = self.dataHandler.get_page(self.entry.value(), output_label)
             self.tableWidget.populate(images,texts,annotations,self.image_id)
         else:
             self.tableWidget.populate_simulate(None,None)
@@ -537,15 +539,15 @@ class GalleryViewWidget(QFrame):
 
     def update_label_filter(self,filter_text):
         if filter_text == 'Show all':
-            self.dataHandler.set_filter_labels(ANNOTATIONS_DICT.values())
+            self.dataHandler.set_filter_labels(ANNOTATIONS_DICT.values(), self.dropdown_sort.currentText())
         elif filter_text == 'Show not labeled':
-            self.dataHandler.set_filter_labels([ANNOTATIONS_DICT['Remove Annotation']])
+            self.dataHandler.set_filter_labels([ANNOTATIONS_DICT['Remove Annotation']], self.dropdown_sort.currentText())
         elif filter_text == 'Show non-parasite':
-            self.dataHandler.set_filter_labels([ANNOTATIONS_DICT['Label as non-parasite']])
+            self.dataHandler.set_filter_labels([ANNOTATIONS_DICT['Label as non-parasite']], self.dropdown_sort.currentText())
         elif filter_text == 'Show parasite':
-            self.dataHandler.set_filter_labels([ANNOTATIONS_DICT['Label as parasite']])
+            self.dataHandler.set_filter_labels([ANNOTATIONS_DICT['Label as parasite']], self.dropdown_sort.currentText())
         elif filter_text == 'Show unsure':
-            self.dataHandler.set_filter_labels([ANNOTATIONS_DICT['Label as unsure']])
+            self.dataHandler.set_filter_labels([ANNOTATIONS_DICT['Label as unsure']], self.dropdown_sort.currentText())
 
 
 class GalleryViewSettingsWidget(QFrame):
@@ -795,24 +797,17 @@ class DataHandler(QObject):
         if self.model_loaded == True:
             self.run_model()
         else:
-            # OLD
-            # self.data_pd['output'] = -1 # placeholder value
-            # NEW
             # placeholder outputs
             output_pd_cols = np.array(list(ANNOTATIONS_REVERSE_DICT.values()))
             output_pd_cols = output_pd_cols[np.array(list(ANNOTATIONS_REVERSE_DICT.keys())) >= 0] 
             output_pd_cols = np.core.defchararray.add(output_pd_cols, ' output') # column names are annotation labels + 'output' (except not labeled)
             for col in output_pd_cols:
                 self.data_pd[col] = -1
-            # END
             if self.spot_idx_sorted is None:
-                # OLD: replace all output_pd_cols[1] with 'output' for old version
-                # NEW
                 self.spot_idx_sorted = self.data_pd[
                     ( self.data_pd['annotation'].isin(self.filter_label) ) &
                     ( ( self.data_pd[output_pd_cols[1]].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd[output_pd_cols[1]]==-1 ) )
                     ].index.to_numpy().astype(int) # apply the filters
-                # END
 
         # display the images
         # self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
@@ -824,9 +819,6 @@ class DataHandler(QObject):
     def run_model(self):
         predictions, features = utils.generate_predictions_and_features(self.model,self.images,batch_size_inference)
 
-        # OLD
-        # output_pd = pd.DataFrame({'output':predictions[:,0]},index=np.arange(self.images.shape[0]))
-        # NEW
         # make output_pd hold probabilities for all classes
         output_pd_cols = np.array(list(ANNOTATIONS_REVERSE_DICT.values()))
         output_pd_cols = output_pd_cols[np.array(list(ANNOTATIONS_REVERSE_DICT.keys())) >= 0] 
@@ -834,18 +826,10 @@ class DataHandler(QObject):
         output_pd = pd.DataFrame(index = np.arange(self.images.shape[0]))
         for i, col in enumerate(output_pd_cols):
             output_pd[col] = predictions[:,i]
-        # END
 
-        # OLD
-        # if 'output' in self.data_pd:
-        #     self.data_pd = self.data_pd.drop(columns=['output'])
-        # NEW
         self.data_pd = self.data_pd.filter(regex='^(?!.*output).*$', axis=1) # drop any output columns currently there
         self.data_pd = self.data_pd.merge(output_pd,left_index=True,right_index=True) # add in new outputs
-        #END
 
-        # OLD: replace all output_pd_cols[1] with 'output' for old version
-        # NEW
         # sort the predictions by class 1 (index 1), as default
         self.data_pd = self.data_pd.sort_values(output_pd_cols[1],ascending=False)
         # self.spot_idx_sorted = self.data_pd.index.to_numpy().astype(int)
@@ -853,18 +837,13 @@ class DataHandler(QObject):
             ( self.data_pd['annotation'].isin(self.filter_label) ) &
             ( ( self.data_pd[output_pd_cols[1]].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd[output_pd_cols[1]]==-1 ) )
             ].index.to_numpy().astype(int) # apply the filters
-        # END
         
         # self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
         self.signal_set_total_page_count.emit(int(np.ceil(len(self.spot_idx_sorted)/self.n_images_per_page)))
         self.signal_populate_page0.emit()
-        # OLD
-        # self.signal_sorting_method.emit('Sort by prediction score')
-        # NEW
         sorting_labels = np.array(list(ANNOTATIONS_REVERSE_DICT.values()))
         sorting_labels = sorting_labels[np.array(list(ANNOTATIONS_REVERSE_DICT.keys())) >= 0]
         self.signal_sorting_method.emit('Sort by ' + sorting_labels[1] + ' prediction score')
-        # END
 
         # embeddings
         self.embeddings = features
@@ -872,7 +851,6 @@ class DataHandler(QObject):
         self.neigh = KNeighborsClassifier(metric=KNN_METRIC)
         self.neigh.fit(self.embeddings, np.zeros(self.embeddings.shape[0]))
 
-        # OLD: replace output_pd_cols[1] with 'output'
         # emit the results for display
         self.signal_predictions.emit(self.data_pd[output_pd_cols[1]].to_numpy(),self.data_pd['annotation'].to_numpy())
 
@@ -890,12 +868,7 @@ class DataHandler(QObject):
         images = self.images[indices,]
 
         # first save the annotation df with all image labels (including -1)
-        # OLD
-        # if 'output' in self.data_pd.columns:
-        #     self.data_pd = self.data_pd.drop(columns=['output'])
-        # NEW
         self.data_pd = self.data_pd.filter(regex='^(?!.*output).*$', axis=1) # drop any output columns currently there
-        # END
         self.data_pd.index.name = 'index'
         self.data_pd.to_csv(os.path.splitext(self.image_path)[0] + '_annotations_' + str(sum(self.data_pd['annotation']!=-1)) + '_' + str(self.data_pd.shape[0])  + '_' + timestamp + '.csv')
         # next save the df with only annotated image labels (no -1) that's used for model training
@@ -946,14 +919,11 @@ class DataHandler(QObject):
         # sort the annotations
         self.data_pd = self.data_pd.sort_values('annotation',ascending=False)
         
-        # OLD: replace all output_col_default with 'output' for old version
-        # NEW
-        output_col_default = next((elem for i, elem in enumerate(list(self.data_pd.columns)) if 'output' in elem and i == 1), None)
+        output_col_default = ANNOTATIONS_REVERSE_DICT[1] + ' output' # default
         self.spot_idx_sorted = self.data_pd[
             ( self.data_pd['annotation'].isin(self.filter_label) ) &
             ( ( self.data_pd[output_col_default].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd[output_col_default]==-1 ) )
             ].index.to_numpy().astype(int) # apply the filters
-        # END
         self.signal_sorting_method.emit('Sort by labels')
         
         # update the display if images have been loaded already
@@ -978,7 +948,7 @@ class DataHandler(QObject):
         else:
             return 0
 
-    def get_page(self,page_number):
+    def get_page(self,page_number, output_label):
         idx_start = self.n_images_per_page*page_number
         idx_end = min(self.n_images_per_page*(page_number+1),self.images[self.spot_idx_sorted,:].shape[0])
         # TODO: when we try to load a smaller set of images when a set is already loaded, 
@@ -1003,20 +973,18 @@ class DataHandler(QObject):
                 annotations.append(int(self.data_pd.loc[self.spot_idx_sorted[i]]['annotation']))
             image_id.append( self.spot_idx_sorted[i] )
         '''
-        # OLD: replace all output_col_default with 'output'
-        output_col_default = next((elem for i, elem in enumerate(list(self.data_pd.columns)) if 'output' in elem and i == 1), None)
         for i in range(idx_start,idx_end):
             # texts.append( '[' + str(i) + ']  ' + str(self.data_pd.iloc[i]['index']) + ': ' + "{:.2f}".format(self.data_pd.iloc[i]['output']))
             if self.is_for_similarity_search:
-                texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.data_pd_local.loc[self.spot_idx_sorted[i]][output_col_default]) + '\n{:.1e}'.format(self.data_pd_local.loc[self.spot_idx_sorted[i]]['distance'])) # + '{:.1e}'.format(self.data_pd.iloc[i]['distances'])
+                texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.data_pd_local.loc[self.spot_idx_sorted[i]][output_label]) + '\n{:.1e}'.format(self.data_pd_local.loc[self.spot_idx_sorted[i]]['distance'])) # + '{:.1e}'.format(self.data_pd.iloc[i]['distances'])
                 annotations.append(int(self.data_pd_local.loc[self.spot_idx_sorted[i]]['annotation']))
                 image_id.append( int(self.data_pd_local.loc[self.spot_idx_sorted[i]]['idx_global']) )
             elif self.is_for_selected_images:
-                texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.data_pd_local.loc[self.spot_idx_sorted[i]][output_col_default]) ) # + '{:.1e}'.format(self.data_pd.iloc[i]['distances'])
+                texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.data_pd_local.loc[self.spot_idx_sorted[i]][output_label]) ) # + '{:.1e}'.format(self.data_pd.iloc[i]['distances'])
                 annotations.append(int(self.data_pd_local.loc[self.spot_idx_sorted[i]]['annotation']))
                 image_id.append( int(self.data_pd_local.loc[self.spot_idx_sorted[i]]['idx_global']) )
             else:
-                texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.data_pd.loc[self.spot_idx_sorted[i]][output_col_default]))
+                texts.append( '[' + str(i) + ']  : ' + "{:.2f}".format(self.data_pd.loc[self.spot_idx_sorted[i]][output_label]))
                 annotations.append(int(self.data_pd.loc[self.spot_idx_sorted[i]]['annotation']))
                 image_id.append( self.spot_idx_sorted[i] )
         return images, texts, image_id, annotations
@@ -1024,50 +992,31 @@ class DataHandler(QObject):
     def sort(self,criterion):
         print(criterion) 
 
-        # OLD
-        # if criterion == 'Sort by prediction score':
-        #     self.data_pd = self.data_pd.sort_values('output',ascending=False)
-        # NEW
-        print(self.data_pd.columns)
         sorting_labels = np.array(list(ANNOTATIONS_REVERSE_DICT.values()))
         sorting_labels = sorting_labels[np.array(list(ANNOTATIONS_REVERSE_DICT.keys())) >= 0]
         for i, label in enumerate(sorting_labels):
             if criterion == 'Sort by ' + label + ' prediction score':
+                output_label = label + ' output'
                 self.data_pd = self.data_pd.sort_values(label + ' output', ascending=False)
-        # END
+
         if criterion == 'Sort by labels':
+            output_label = ANNOTATIONS_REVERSE_DICT[1] + ' output' # default
             self.data_pd = self.data_pd.sort_values('annotation',ascending=False)
         if criterion == 'Sort by similarity':
+            output_label = ANNOTATIONS_REVERSE_DICT[1] + ' output' # default
             self.data_pd = self.data_pd.sort_values('distance',ascending=True)
         
         # update the sorted spot idx
         if self.is_for_similarity_search or self.is_for_selected_images:
-            # TODO: fix
-            # self.spot_idx_sorted = self.data_pd['idx_local'].to_numpy().astype(int)
             self.spot_idx_sorted = self.data_pd[
                     ( self.data_pd['annotation'].isin(self.filter_label) ) &
-                    ( ( self.data_pd['output'].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd['output']==-1 ) )
+                    ( ( self.data_pd[output_label].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd[output_label]==-1 ) )
                     ]['idx_local'].to_numpy().astype(int) # apply the filters
         else:
-            # OLD
-            # self.spot_idx_sorted = self.data_pd[
-            #     ( self.data_pd['annotation'].isin(self.filter_label) ) &
-            #     ( ( self.data_pd['output'].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd['output']==-1 ) )
-            #     ].index.to_numpy().astype(int) # apply the filters
-            # NEW
-            for i, label in enumerate(sorting_labels):
-                if criterion == 'Sort by ' + label + ' prediction score':
-                    self.spot_idx_sorted = self.data_pd[
-                        ( self.data_pd['annotation'].isin(self.filter_label) ) &
-                        ( ( self.data_pd[label + ' output'].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd[label + ' output']==-1 ) )
-                    ].index.to_numpy().astype(int) # apply the filters
-                else:
-                    output_col_default = next((elem for i, elem in enumerate(list(self.data_pd.columns)) if 'output' in elem and i == 1), None)
-                    self.spot_idx_sorted = self.data_pd[
-                        ( self.data_pd['annotation'].isin(self.filter_label) ) &
-                        ( ( self.data_pd[output_col_default].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd[output_col_default]==-1 ) )
-                    ].index.to_numpy().astype(int) # apply the filters
-            # END
+            self.spot_idx_sorted = self.data_pd[
+                ( self.data_pd['annotation'].isin(self.filter_label) ) &
+                ( ( self.data_pd[output_label].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd[output_label]==-1 ) )
+            ].index.to_numpy().astype(int) # apply the filters
         self.signal_populate_page0.emit()
         self.signal_sorting_method.emit(criterion)
 
@@ -1079,30 +1028,33 @@ class DataHandler(QObject):
         indices = indices.squeeze()
         images = self.images[indices,]
 
-        # OLD: replace all output_col_default with 'output' for old version
-        # NEW
-        output_col_default = next((elem for i, elem in enumerate(list(self.data_pd.columns)) if 'output' in elem and i == 1), None)
-        scores = self.data_pd.loc[indices][output_col_default].to_numpy() # use the presorting idx
-        # END
+        output_pd_cols = np.array(list(ANNOTATIONS_REVERSE_DICT.values()))
+        output_pd_cols = output_pd_cols[np.array(list(ANNOTATIONS_REVERSE_DICT.keys())) >= 0] 
+        output_pd_cols = np.core.defchararray.add(output_pd_cols, ' output') # column names are annotation labels + 'output' (except not labeled)
+        scores = self.data_pd.loc[indices, output_pd_cols].to_numpy() # use the presorting idx
         annotations = self.data_pd.loc[indices]['annotation'].to_numpy() # use the presorting idx
         # return images[1:,], indices[1:], scores[1:], distances[1:], annotations[1:]
         return images, indices, scores, distances, annotations
 
     def populate_similarity_search(self,images,indices,scores,distances,annotations):
-        # TODO: trace this back and figure out what self is here; what to do with 'output'?
         self.images = images
-        self.data_pd = pd.DataFrame({'idx_global':indices,'idx_local':np.arange(self.images.shape[0]).astype(int),'output':scores, 'distance':distances, 'annotation':annotations}) # idx_local for indexing the spot images
+
+        self.data_pd = pd.DataFrame({'idx_global':indices,'idx_local':np.arange(self.images.shape[0]).astype(int), 'distance':distances, 'annotation':annotations}) # idx_local for indexing the spot images
+        output_pd_cols = np.array(list(ANNOTATIONS_REVERSE_DICT.values()))
+        output_pd_cols = output_pd_cols[np.array(list(ANNOTATIONS_REVERSE_DICT.keys())) >= 0] 
+        output_pd_cols = np.core.defchararray.add(output_pd_cols, ' output') # column names are annotation labels + 'output' (except not labeled)
+        self.data_pd[output_pd_cols] = scores
+
         self.data_pd_local = self.data_pd.copy()
         self.data_pd = self.data_pd.set_index('idx_global')
         self.data_pd_local = self.data_pd_local.set_index('idx_local')
         print('populated data_pd of the similarity search data handler:')
         print(self.data_pd)
         self.images_loaded = True
-        # self.spot_idx_sorted = self.data_pd['index'].to_numpy().astype(int)
-        # self.spot_idx_sorted = np.arange(self.images.shape[0]).astype(int)
+
         self.spot_idx_sorted = self.data_pd[
             ( self.data_pd['annotation'].isin(self.filter_label) ) &
-            ( ( self.data_pd['output'].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd['output']==-1 ) )
+            ( ( self.data_pd[output_pd_cols[1]].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd[output_pd_cols[1]]==-1 ) )
             ]['idx_local'].to_numpy().astype(int) # apply the filters
         # self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
         self.signal_set_total_page_count.emit(int(np.ceil(len(self.spot_idx_sorted)/self.n_images_per_page)))
@@ -1110,31 +1062,34 @@ class DataHandler(QObject):
 
     def prepare_selected_images(self,indices):
         images = self.images[indices,]
-        # OLD: replace output_col_default with 'output'
-        # NEW
-        output_col_default = next((elem for i, elem in enumerate(list(self.data_pd.columns)) if 'output' in elem and i == 1), None)
-        scores = self.data_pd.loc[indices][output_col_default].to_numpy() # use the presorting idx
-        # END
+        output_pd_cols = np.array(list(ANNOTATIONS_REVERSE_DICT.values()))
+        output_pd_cols = output_pd_cols[np.array(list(ANNOTATIONS_REVERSE_DICT.keys())) >= 0] 
+        output_pd_cols = np.core.defchararray.add(output_pd_cols, ' output') # column names are annotation labels + 'output' (except not labeled)
+        scores = self.data_pd.loc[indices, output_pd_cols].to_numpy() # use the presorting idx
+
         annotations = self.data_pd.loc[indices]['annotation'].to_numpy() # use the presorting idx
         # emit the results
         self.signal_selected_images.emit(images,indices,scores,annotations)
 
     def populate_selected_images(self,images,indices,scores,annotations):
-        # TODO: trace this back and figure out what self is here; what to do with 'output'?
         self.images = images
-        self.data_pd = pd.DataFrame({'idx_global':indices,'idx_local':np.arange(self.images.shape[0]).astype(int),'output':scores, 'annotation':annotations},index=indices) # idx_local for indexing the spot images
+        self.data_pd = pd.DataFrame({'idx_global':indices,'idx_local':np.arange(self.images.shape[0]).astype(int), 'annotation':annotations},index=indices)
+        output_pd_cols = np.array(list(ANNOTATIONS_REVERSE_DICT.values()))
+        output_pd_cols = output_pd_cols[np.array(list(ANNOTATIONS_REVERSE_DICT.keys())) >= 0]
+        output_pd_cols = np.core.defchararray.add(output_pd_cols, ' output')
+        self.data_pd[output_pd_cols] = scores
+
         self.data_pd_local = self.data_pd.copy()
         self.data_pd = self.data_pd.set_index('idx_global')
         self.data_pd_local = self.data_pd_local.set_index('idx_local')
         print('populated data_pd of the selected images data handler:')
         print(self.data_pd)
         self.images_loaded = True
-        # self.spot_idx_sorted = self.data_pd['index'].to_numpy().astype(int)
-        # self.spot_idx_sorted = np.arange(self.images.shape[0]).astype(int)
         self.spot_idx_sorted = self.data_pd[
             ( self.data_pd['annotation'].isin(self.filter_label) ) &
-            ( ( self.data_pd['output'].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd['output']==-1 ) )
+            ( ( self.data_pd[output_pd_cols[1]].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd[output_pd_cols[1]]==-1 ) )
             ]['idx_local'].to_numpy().astype(int) # apply the filters
+
         # self.signal_set_total_page_count.emit(int(np.ceil(self.get_number_of_rows()/self.n_images_per_page)))
         self.signal_set_total_page_count.emit(int(np.ceil(len(self.spot_idx_sorted)/self.n_images_per_page)))
         self.signal_populate_page0.emit()
@@ -1169,7 +1124,6 @@ class DataHandler(QObject):
             self.data_pd.index.name = 'index'
             # save the annotations
             current_time = datetime.now().strftime('%Y-%m-%d_%H-%M')
-            print('\n hi \n')
             self.data_pd.to_csv(os.path.splitext(self.image_path)[0] + '_annotations_' + str(sum(self.data_pd['annotation']!=-1)) + '_' + str(self.data_pd.shape[0])  + '_' + current_time + '.csv')
 
 
@@ -1203,68 +1157,67 @@ class DataHandler(QObject):
                 umap_embeddings = self.reducer.transform(self.embeddings[index,])
                 self.signal_umap_embedding.emit(umap_embeddings[:,0],umap_embeddings[:,1])
 
-    def set_filter_score_min(self,score):
+    def set_filter_score_min(self,score,sorting_criterion):
         self.filter_score_min = score
         if self.data_pd is not None:
+            # set output_label = column for what we're sorting by 
+            if sorting_criterion.find('prediction') != -1:
+                output_label = sorting_criterion[sorting_criterion.find('by ') + len('by '):sorting_criterion.find(' prediction')] + ' output'
+            else:
+                output_label = ANNOTATIONS_REVERSE_DICT[1] + ' output' # default
             if self.is_for_similarity_search or self.is_for_selected_images:
-                # TODO: figure this out
                 self.spot_idx_sorted = self.data_pd[
                     ( self.data_pd['annotation'].isin(self.filter_label) ) &
-                    ( ( self.data_pd['output'].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd['output']==-1 ) )
+                    ( ( self.data_pd[output_label].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd[output_label]==-1 ) )
                     ]['idx_local'].to_numpy().astype(int) # apply the filters
             else:
-                # OLD: replace output_col_default with 'output'
-                # NEW
-                output_col_default = next((elem for i, elem in enumerate(list(self.data_pd.columns)) if 'output' in elem and i == 1), None)
                 self.spot_idx_sorted = self.data_pd[
                     ( self.data_pd['annotation'].isin(self.filter_label) ) &
-                    ( ( self.data_pd[output_col_default].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd[output_col_default]==-1 ) )
+                    ( ( self.data_pd[output_label].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd[output_label]==-1 ) )
                     ].index.to_numpy().astype(int) # apply the filters
-                # END
             if self.spot_idx_sorted is not None:
                 self.signal_set_total_page_count.emit(int(np.ceil(len(self.spot_idx_sorted)/self.n_images_per_page)))
                 self.signal_populate_page0.emit()
 
-    def set_filter_score_max(self,score):
+    def set_filter_score_max(self,score, sorting_criterion):
         self.filter_score_max = score
         if self.data_pd is not None:
-            # TODO: figure this out
-            if self.is_for_similarity_search or self.is_for_selected_images:
-                # self.spot_idx_sorted = self.data_pd['idx_local'].to_numpy().astype(int)
-                self.spot_idx_sorted = self.data_pd[
-                        ( self.data_pd['annotation'].isin(self.filter_label) ) &
-                        ( ( self.data_pd['output'].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd['output']==-1 ) )
-                        ]['idx_local'].to_numpy().astype(int) # apply the filters
+            # set output_label = column for what we're sorting by 
+            if sorting_criterion.find('prediction') != -1:
+                output_label = sorting_criterion[sorting_criterion.find('by ') + len('by '):sorting_criterion.find(' prediction')] + ' output'
             else:
-                # OLD: replace output_col_default with 'output'
-                # NEW
-                output_col_default = next((elem for i, elem in enumerate(list(self.data_pd.columns)) if 'output' in elem and i == 1), None)
+                output_label = ANNOTATIONS_REVERSE_DICT[1] + ' output' # default
+            if self.is_for_similarity_search or self.is_for_selected_images:
                 self.spot_idx_sorted = self.data_pd[
                     ( self.data_pd['annotation'].isin(self.filter_label) ) &
-                    ( ( self.data_pd[output_col_default].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd[output_col_default]==-1 ) )
+                    ( ( self.data_pd[output_label].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd[output_label]==-1 ) )
+                    ]['idx_local'].to_numpy().astype(int) # apply the filters
+            else:
+                self.spot_idx_sorted = self.data_pd[
+                    ( self.data_pd['annotation'].isin(self.filter_label) ) &
+                    ( ( self.data_pd[output_label].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd[output_label]==-1 ) )
                     ].index.to_numpy().astype(int) # apply the filters
-                # END
             if self.spot_idx_sorted is not None:
                 self.signal_set_total_page_count.emit(int(np.ceil(len(self.spot_idx_sorted)/self.n_images_per_page)))
                 self.signal_populate_page0.emit()
 
-    def set_filter_labels(self,labels):
+    def set_filter_labels(self,labels,sorting_criterion):
         self.filter_label = labels
         if self.data_pd is not None:
-            if self.is_for_similarity_search or self.is_for_selected_images:
-                # TODO: figure this out
-                # self.spot_idx_sorted = self.data_pd['idx_local'].to_numpy().astype(int)
-                self.spot_idx_sorted = self.data_pd[
-                        ( self.data_pd['annotation'].isin(self.filter_label) ) &
-                        ( ( self.data_pd['output'].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd['output']==-1 ) )
-                        ]['idx_local'].to_numpy().astype(int) # apply the filters
+            # set output_label = column for what we're sorting by 
+            if sorting_criterion.find('prediction') != -1:
+                output_label = sorting_criterion[sorting_criterion.find('by ') + len('by '):sorting_criterion.find(' prediction')] + ' output'
             else:
-                # OLD: replace output_col_default with 'output'
-                # NEW
-                output_col_default = next((elem for i, elem in enumerate(list(self.data_pd.columns)) if 'output' in elem and i == 1), None)
+                output_label = ANNOTATIONS_REVERSE_DICT[1] + ' output' # default
+            if self.is_for_similarity_search or self.is_for_selected_images:
                 self.spot_idx_sorted = self.data_pd[
                     ( self.data_pd['annotation'].isin(self.filter_label) ) &
-                    ( ( self.data_pd[output_col_default].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd[output_col_default]==-1 ) )
+                    ( ( self.data_pd[output_label].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd[output_label]==-1 ) )
+                    ]['idx_local'].to_numpy().astype(int) # apply the filters
+            else:
+                self.spot_idx_sorted = self.data_pd[
+                    ( self.data_pd['annotation'].isin(self.filter_label) ) &
+                    ( ( self.data_pd[output_label].between(self.filter_score_min,self.filter_score_max) ) | ( self.data_pd[output_label]==-1 ) )
                     ].index.to_numpy().astype(int) # apply the filters
             if self.spot_idx_sorted is not None:
                 self.signal_set_total_page_count.emit(int(np.ceil(len(self.spot_idx_sorted)/self.n_images_per_page)))
