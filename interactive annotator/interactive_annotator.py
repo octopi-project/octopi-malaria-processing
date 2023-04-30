@@ -894,6 +894,10 @@ class DataHandler(QObject):
 
     def on_training_complete(self):
         self.run_model()
+        
+        # TODO: fix
+        print("\a"); time.sleep(0.5); print("\a"); time.sleep(0.5); print("\a"); time.sleep(0.5); print("\a"); time.sleep(0.5); 
+
         self.signal_populate_page0.emit()
 
     def load_annotations(self,path):
@@ -1119,11 +1123,14 @@ class DataHandler(QObject):
     def save_annotations(self):
         if self.image_path:
             # remove the prediction scores
+            data_pd_with_outputs = self.data_pd.copy()
             self.data_pd = self.data_pd.filter(regex='^(?!.*output).*$', axis=1) # drop any output columns currently there
             # set index name
             self.data_pd.index.name = 'index'
+            data_pd_with_outputs.index.name = 'index'
             # save the annotations
             current_time = datetime.now().strftime('%Y-%m-%d_%H-%M')
+            data_pd_with_outputs.to_csv(os.path.splitext(self.image_path)[0] + '_annotations_with_predictions_' + str(sum(self.data_pd['annotation']!=-1)) + '_' + str(self.data_pd.shape[0]) + '_' + current_time + '.csv')
             self.data_pd.to_csv(os.path.splitext(self.image_path)[0] + '_annotations_' + str(sum(self.data_pd['annotation']!=-1)) + '_' + str(self.data_pd.shape[0])  + '_' + current_time + '.csv')
 
 
