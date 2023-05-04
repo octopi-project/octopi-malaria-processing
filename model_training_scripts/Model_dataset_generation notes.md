@@ -1,0 +1,195 @@
+Model_dataset_generation notes
+
+Here’s what I wan’t the pipeline to do:
+- Take in the combined images and annotations (without predictions)
+    - data_dir + '/patient_combined_images.npy': data_dir + '/patient_combined_ann.csv'
+    - data_dir_n + '/neg_combined_images.npy': data_dir_n + '/neg_combined_ann.csv'
+- Combine these datasets
+    - data_dir + '/combined_images.npy'
+    - data_dir + '/combined_ann.csv'
+- Split the images by class
+    - data_dir + '/combined_images_parasite.npy' **and** data_dir + '/combined_ann_parasite.csv'
+    - data_dir + '/combined_images_non-parasite.npy' **and** data_dir + '/combined_ann_non-parasite.csv'
+    - data_dir + '/combined_images_unsure.npy' **and** data_dir + '/combined_ann_unsure.csv'
+        - Save unsure images as parasite _(label them 0.8)_, non-parasite _(label them 0.2)_, and unlabeled _(label them -0.8)_:
+            - data_dir + '/combined_ann_unsure_as_parasite.csv'
+            - data_dir + '/combined_ann_unsure_as_non-parasite.csv'
+            - data_dir + '/combined_ann_unsure_as_unlabeled.csv'
+- Combine the following datasets:
+    - data_dir + '/combined_images_non-parasite.npy' **and** data_dir + '/combined_ann_non-parasite.csv'
+    - data_dir + '/combined_images_parasite.npy' **and** data_dir + '/combined_ann_parasite.csv'
+    - Into:
+        - data_dir + '/combined_images_parasite_and_non-parasite.npy' **and** data_dir + '/combined_ann_parasite_and_non-parasite.csv'
+- Run two classifiers:
+    - **SA**: On all images, in all 3 classes
+        - Run on data_dir + '/combined_images.npy' **and** data_dir + '/combined_ann.csv'
+    - **SB**: On all images, ignoring unsures
+        - Run on data_dir + '/combined_images_parasite_and_non-parasite.npy' **and** data_dir + '/combined_ann_parasite_and_non-parasite.csv'
+- Save classifier A, B performance, and annotations (now with predictions):
+    - Annotations: 
+        - **SA**: data_dir_base + ‘/s_a/ann_with_predictions.csv'
+        - **SB**: data_dir_base + ‘/s_b/ann_with_predictions.csv'
+    - Model performance:
+        - TODO: idk the file names yet, but something like: 
+            - **SA**: data_dir_base + ‘/s_a/model_perf.zip’
+            - **SB**: data_dir_base + ‘/s_b/model_perf.zip’
+- Split out the mislabeled (“wrong”) images by class and prediction
+    - Using **SA**: take in: data_dir + '/combined_images.npy' **and** data_dir_base + ‘/s_a/ann_with_predictions.csv'
+        - data_dir_base + ‘/s_a/combined_images_parasite_wrong.npy’ **and** data_dir_base + ‘/s_a/combined_ann_parasite_wrong.csv'
+        - data_dir_base + ‘/s_a/combined_images_non-parasite_wrong.npy’ **and** data_dir_base + ‘/s_a/combined_ann_non-parasite_wrong.csv'
+        - and maybe also:
+        - data_dir_base + ‘/s_a/combined_images_parasite_right.npy’ **and** data_dir_base + ‘/s_a/combined_ann_parasite_right.csv’
+        - data_dir_base + ‘/s_a/combined_images_non-parasite_right.npy’ **and** data_dir_base + ‘/s_a/combined_ann_non-parasite_right.csv’
+    - Using **SB**: take in: data_dir + '/combined_images_parasite_and_non-parasite.npy' **and** data_dir_base + ‘/s_b/ann_with_predictions.csv'
+        - data_dir_base + ‘/s_b/combined_images_parasite_wrong.npy’ **and** data_dir_base + ‘/s_b/combined_ann_parasite_wrong.csv’
+        - data_dir_base + ‘/s_b/combined_images_non-parasite_wrong.npy’ **and** data_dir_base + ‘/s_b/combined_ann_non-parasite_wrong.csv’
+        - and maybe also:
+        - data_dir_base + ‘/s_b/combined_images_parasite_right.npy’ **and** data_dir_base + ‘/s_b/combined_ann_parasite_right.csv’
+        - data_dir_base + '/s_b/combined_images_non-parasite_right.npy' **and** data_dir_base + '/s_b/combined_ann_non-parasite_right.csv'
+- Begin differentiator pipelines: prep & run differentiator, relabel unsures, run classifier
+    - **S1**: differentiator uses unsure labeled as parasite and wrong non-parasite
+        - **S1.A**: using "wrong" as defined by classifier A
+            - Write dictionaries for files to combine (for differentiator and classifier)
+                - combine_dict_diff:
+                    - data_dir + ‘/combined_images_unsure.npy': data_dir + '/combined_ann_unsure_as_parasite.csv'
+                    - data_dir_base + '/s_a/combined_images_non-parasite_wrong.npy': data_dir_base + '/s_a/combined_ann_non-parasite_wrong.csv'
+                - combine_dict_cl should have: parasite & non-parasite, _relabeled_ unsure
+                    - data_dir + '/combined_images_parasite_and_non-parasite.npy': data_dir + '/combined_ann_parasite_and_non-parasite.npy'
+                    - data_dir + '/combined_images_unsure.npy': data_dir_base + '/s_1a/unsure_relabeled_thresh_0.9.csv'
+                        - note that the relabeling hasn't actually happened yet!
+            - Train differentiator: 
+                - Combine datasets in combine_dict_diff:
+                    - data_dir_base + '/s_1a/combined_images_diff.npy' **and** data_dir_base + '/s_1a/combined_ann_diff.csv'
+                - Train and run differentiator model (binary classifier) with combined datasets; get out:
+                    - Annotations: 
+                        - data_dir_base + ‘/s_1a/ann_with_predictions_diff.csv'
+                    - Model performance:
+                        - TODO: idk the file names yet, but something like: 
+                            - data_dir_base + '/s_1a/model_perf_diff.zip'
+            - Relabel unsures using: data_dir_base + ‘/s_1a/ann_with_predictions_diff.csv'
+                - relabel_thresh = 0.9
+                - New annotations: data_dir + '/s_1a/unsure_relabeled_thresh_0.9.csv'
+            - Train classifier:
+                - Combine datasets in combine_dict_cl:
+                    - data_dir_base + '/s_1a/combined_images_cl.npy' **and** data_dir_base + '/s_1a/combined_ann_cl.csv'
+                - Train and run classifier model with combined datasets; get out:
+                    - Annotations:
+                        - data_dir_base + '/s_1a/ann_with_predictions_cl.csv'
+                    - Model performance:
+                        - TODO: idk the file names yet, but something like:
+                            - data_dir_base + '/s_1a/model_perf_cl.csv'
+        - **S1.B**: using "wrong" as defined by classifier B
+            - I think: do the same as **S1.A** but replace all 's_1a' with 's_1b'
+    - **S2**: differentiator uses unsure labeled as parasite, wrong non-parasite, and wrong parasite
+        - I think: do the same as **S1** (also splitting into **S2.A, S2.B**); just replace all 's_1' with 's_2'
+        - But we need a new combine_dict_diff:
+            - data_dir + ‘/combined_images_unsure.npy': data_dir + '/combined_ann_unsure_as_parasite.csv'
+            - data_dir_base + '/s_a/combined_images_non-parasite_wrong.npy': data_dir_base + '/s_a/combined_ann_non-parasite_wrong.csv'
+            - data_dir_base + '/s_a/combined_images_parasite_wrong.npy': data_dir_base + '/s_b/combined_ann_non-parasite_wrong.csv'
+        - And we need a new combine_dict_cl:
+            - data_dir + '/combined_images_parasite_and_non-parasite.npy': data_dir + '/combined_ann_parasite_and_non-parasite.npy'
+            - data_dir + '/combined_images_unsure.npy': data_dir_base + '/s_2a/unsures_relabeled_thresh_0.9.csv'
+                - note that the relabeling hasn't actually happened yet!
+    - **S3**: differentiator uses unsure not labeled, wrong non-parasite, and wrong parasite
+        - Do the same as **S1** (also splitting into **S3.A, S3.B**); just replace all 's_1' with 's_3'
+        - But we need a new combine_dict_diff:
+            - data_dir + ‘/combined_images_unsure.npy': data_dir + '/combined_ann_unsure_as_unlabeled.csv'
+            - data_dir_base + '/s_a/combined_images_non-parasite_wrong.npy': data_dir_base + '/s_a/combined_ann_non-parasite_wrong.csv'
+            - data_dir_base + '/s_a/combined_images_parasite_wrong.npy': data_dir_base + '/s_b/combined_ann_non-parasite_wrong.csv'
+        - And we need a new combine_dict_cl:
+            - data_dir + '/combined_images_parasite_and_non-parasite.npy': data_dir + '/combined_ann_parasite_and_non-parasite.npy'
+            - data_dir + '/combined_images_unsure.npy': data_dir_base + '/s_3a/unsure_relabeled_thresh_0.9.csv'
+                - note that the relabeling hasn't actually happened yet!
+
+
+
+Functions needed:
+- **DONE:** Combine multiple datasets into 1 given dict of image npy: annotation csv
+    - dataset (image:ann) dict
+    - desired output image file path
+    - desired outout ann file path
+- **DONE** Split dataset by annotation class
+    - annotation dictionary (annotation name:annotation value)
+    - input image file path
+    - input annotation file path
+    - WILL save to same file paths (and same folder), but with _{class} at the end of the file name
+        - optional: output im/ann file path dictionaries
+- **DONE**: Change annotation value (for unsure relabeling)
+    - annotation dictionary (annotation name:annotation value)
+    - input annotation file path
+    - original annotation value
+    - new annotation value
+    - WILL change all annotations of value X (original) to value Y (new)
+        - optional: output annotation file path
+- **DONE**: Given annotations with predictions, split images by right / wrong
+    - annotation dictionary (annotation name:annotation value)
+    - class key: the name of the class that we're trying to split into right and wrong
+    - input annotations with predictions file path
+    - input images file path
+    - output folder path
+        - WILL ultimately save annotations and images to similar file names, with _{class}_{right/wrong} at tbe end of the file name; but we need the output folder still
+            - e.g. combined_images_parasite_wrong.npy
+- Model trainer: given image and annotation file, run a model and save its performance and predictions
+    - input image file path
+    - input annotation file path
+    - output annotation with predictions file path
+    - output model performance file path -- _maybe_
+    - model parameters?
+    - WILL round all annotation values before running model
+    - Here's the plan:
+        - take in input image file path & ann file path; get out images and annotations df (rounded)
+            - prep annotations how we prep it in interactive_annotator.start_training()
+            - don't do the annotation csv saving!
+            - maybe save ann_for_model for debugging; remove it later
+        - initialize the model (using model.ResNet):
+            - need:
+                - model name
+                - channels 
+                - filters
+                - classes (# of unique values in annotations > 0)
+                - kernel size
+                - stride
+                - padding
+                    - use model_spec (dict in interactive_annotator.py) for the above^
+            - also figure out what model_name (without file extension) should be now
+        - pass this into utils.train_model()
+            - should I be using threading?? see line 889; what's kwargs?
+            - change a few things:
+                - remove "if reset"
+                - make split (0.3,0.7) a variable
+                - remove "if caller" (109, 181)
+                - also remove lines 186, 192 (more caller stuff)
+                - save the validation loss and running loss to a csv instead (not the signal emit stuff)
+                    - the rows should be epochs
+        - in the meantime, I also need the evaluate_model code updated for validation loss:
+            - changes: none really
+        - and then we should generate and save predictions with the model:
+            - use interactive_annotator.py's run_model(): 820-832
+            - also use utils.py's generate_predictions_and_features; set batch_size = 2048
+- Relabel unsure images by their annotation value and differentiator prediction
+    - class name to relabel and save
+        - 'unsure'
+    - relabel threshold
+        - 0.9
+    - input annotation with predictions file path 
+        - probably the combined annotations with predictions for differentiator
+    - output annotation file path
+
+Strategies:
+- Idea: differentiators = models trained to relabel unsure images
+- S1: 
+    - Train a differentiator with unsure as parasite and “wrong” (mislabeled) non-parasites
+    - Relabel unsure based on parasite prediction scores (> 0.9)
+    - Train a classifier with all parasite, all non-parasite, and relabeled unsure
+- S2: 
+    - Train a differentiator with unsure as parasite and “wrong” non-parasites and parasites
+    - Relabel unsure based on parasite prediction scores (> 0.9)
+    - Train a classifier with all parasite, all non-parasite, and relabeled unsure
+- S3: 
+    - Train a differentiator with unsure as not labeled and “wrong” non-parasites and parasites
+    - Relabel unsure based on parasite prediction scores (> 0.9)
+    - Train a classifier with all parasite, all non-parasite, and relabeled unsure
+- SA:
+    - Train a classifier with all parasite, all non-parasite, all unsure (basically, all images)
+- SB:
+    - Train a classifier with all parasite, all non-parasite (none of the unsure)

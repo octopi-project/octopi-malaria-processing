@@ -1,290 +1,496 @@
 import numpy as np
 import pandas as pd
-import os
+import models
+import torch
+from torch.utils.data import DataLoader, TensorDataset
+import torch.nn as nn
+from torch.optim import Adam
+import copy
+import time
 
-# get ids for all images labeled uns
-def isolate_classes(annotation_pd, images):
-	idx_n = annotation_pd['annotation'].isin([0])
-	idx_p = annotation_pd['annotation'].isin([1])
-	idx_u = annotation_pd['annotation'].isin([2])
-
-	annotation_pd_n = annotation_pd.loc[idx_n]
-	annotations_n = annotation_pd_n['annotation'].values.squeeze()
-	images_n = images[idx_n,]
-
-	annotation_pd_p = annotation_pd.loc[idx_p]
-	annotations_p = annotation_pd_p['annotation'].values.squeeze()
-	images_p = images[idx_p,]
-
-	annotation_pd_u = annotation_pd.loc[idx_u]
-	annotations_u = annotation_pd_u['annotation'].values.squeeze()
-	images_u = images[idx_u,]
-	return annotations_n, images_n, annotations_p, images_p, annotations_u, images_u
-
-# get ids for all neg images that were predicted to be uns or parasites
-def isolate_misclassified_neg(annotation_pd, images):
-	cond_annotation = annotation_pd['annotation'] == 0
-	cond_labeled_notneg = annotation_pd['non-parasite output'] < 0.5
-	cond = cond_annotation & cond_labeled_notneg
-	cond_not = cond_annotation & ~cond_labeled_notneg
-	idx = annotation_pd.loc[cond].index
-	idx_not = annotation_pd.loc[cond_not].index
-
-	annotation_pd_p = annotation_pd.loc[idx]
-	annotations_ = annotation_pd_p['annotation'].values.squeeze()
-	images_p = images[idx,]
-	annotation_not_pd = annotation_pd.loc[idx_not]
-	annotations_not_ = annotation_not_pd['annotation'].values.squeeze()
-	images_not = images[idx_not,]
-	return annotations_, images_p, annotations_not_, images_not
-
-# get ids for all pos images that were predicted to be uns or neg
-def isolate_misclassified_pos(annotation_pd, images):
-	cond_annotation = annotation_pd['annotation'] == 1
-	cond_labeled_notpos = annotation_pd['parasite output'] < 0.5
-	cond = cond_annotation & cond_labeled_notpos
-	cond_not = cond_annotation & ~cond_labeled_notpos
-	idx = annotation_pd.loc[cond].index
-	idx_not = annotation_pd.loc[cond_not].index
-
-	annotation_pd_p = annotation_pd.loc[idx]
-	annotations_ = annotation_pd_p['annotation'].values.squeeze()
-	images_p = images[idx,]
-	annotation_not_pd = annotation_pd.loc[idx_not]
-	annotations_not_ = annotation_not_pd['annotation'].values.squeeze()
-	images_not = images[idx_not,]
-	return annotations_, images_p, annotations_not_, images_not
-
-def relabel_uns_likely_pos(diff_annotation_w_pred_path, all_unsure_idx, diff_relabled_path):
-	diff_annotation_pd = pd.read_csv(diff_annotation_w_pred_path + '.csv', index_col='index')
-	cond_annotation = diff_annotation_pd.index.isin(all_unsure_idx)
-	cond_pos = diff_annotation_pd['parasite output'] > 0.9
-	cond = cond_annotation & cond_pos
-	cond_not = cond_annotation & ~cond_pos
-
-	diff_annotation_pd.loc[cond, 'annotation'] = 1
-	diff_annotation_pd.loc[cond_not, 'annotation'] = 0
-	diff_annotation_pd = diff_annotation_pd.loc[:, ~diff_annotation_pd.columns.str.contains('output')]
-	diff_annotation_pd.to_csv(diff_relabled_path + '.csv')
-
-def combine_datasets(combine_dict, image_save_path, ann_save_path):
-	images = []
-	ann = []
-	idxs = []
-	for npy_id in list(combine_dict.keys()):
-		images_ = np.load(npy_id + '.npy')
-		annotation_pd = pd.read_csv(combine_dict[npy_id] + '.csv',index_col='index')
-		annotations_ = annotation_pd['annotation'].values.squeeze()
-
-		print(images_.shape)
-		images.append(images_)
-		ann.append(annotations_)
-		idxs.append(images_.shape[0])
-	images = np.concatenate(images, axis=0)
-	ann = np.concatenate(ann)
-	print(images.shape)
-
-	np.save(image_save_path, images)
-	df = pd.DataFrame({'annotation':ann})
-	df.index.name = 'index'
-	df.to_csv(ann_save_path + '.csv')
-
-	return idxs
+# import utils.py from interactive_annotator
+from importlib.machinery import SourceFileLoader
+utils = SourceFileLoader("utils", "/home/rinni/octopi-malaria/interactive annotator/utils.py").load_module()
 
 
+# GLOBAL VARIABLES
 
+ann_dict = {'non-parasite':0, 'parasite':1, 'unsure':2, 'unlabeled':-1}
+relabel_thresh = 0.9
 
-
-
-
-
-
-# FILTERING
-
-# set up images and annotations to filter
-
-# folder containing all image and annotations files to filter
+# folder containing all image and annotation files to filter
 data_dir = '/media/rinni/Extreme SSD/Rinni/to-combine/sorted_images/'
 data_dir_base = data_dir.split('sorted_images')[0]
-# folder containing all neg image and annotations files to filter
+# folder containing all non-parasite image and annotation files to filter
 data_dir_n = '/home/rinni/Desktop/Octopi/data/neg-to-combine/'
 
-# get images and annotations
-npy_id = data_dir + 'combined_images.npy'
-images_all = np.load(npy_id_)
+# model default parameters
+model_spec1 = {'model_name':'resnet18','n_channels':4,'n_filters':64,'n_classes':len(ann_dict)-1,'kernel_size':3,'stride':1,'padding':1, 'batch_size':32}
 
-annotation_id = data_dir + 'combined_annotations_with_predictions.csv'
-annotation_pd = pd.read_csv(annotation_id,index_col='index')
-annotation_pd = annotation_pd.sort_index()
+# model_spec2 = {'model_name':'resnet34','n_channels':4,'n_filters':64,'n_classes':len(ann_dict)-1,'kernel_size':3,'stride':1,'padding':1, 'batch_size':20}
 
-npy_id_n = data_dir_n + 'neg_combined_images.npy'
-images_all_n = np.load(npy_id_n)
+# FUNCTIONS
 
-annotation_id_n = data_dir_n + 'neg_combined_annotations_with_predictions.csv'
-annotation_pd_n = pd.read_csv(annotation_id_n,index_col='index')
-annotation_pd_n = annotation_pd_n.sort_index()
+# combines the datasets in combine_dict; saves the outputs to the given image and annotation files
+def combine_datasets(combine_dict, out_image_path, out_ann_path):
+	images = []
+	annotations = []
+	# add the images / annotations for each dictionary element to their respective lists
+	for npy_path in list(combine_dict.keys()):
+		images_ = np.load(npy_path)
+		ann_pd = pd.read_csv(combine_dict[npy_path],index_col='index')
+		annotations_ = ann_pd['annotation'].values.squeeze()
 
-# split patient slides data into uns, neg, and pos datasets
+		images.append(images_)
+		annotations.append(annotations_)
+	
+	# combine
+	images = np.concatenate(images, axis=0)
+	print('The combined images have shape: '); print(images.shape)
 
-annotations_n, images_n, annotations_p, images_p, annotations_u, images_u = isolate_classes(annotation_pd, images_all)
+	annotations = np.concatenate(annotations)
+	comb_ann_df = pd.DataFrame({'annotation':annotations}).set_index('index')
 
-print(images_n.shape)
+	# save
+	np.save(out_image_path, images)
+	comb_ann_df.to_csv(out_ann_path)
 
-np.save(data_dir + '/combined_images_neg.npy',images_n)
-df_n = pd.DataFrame({'annotation':annotations_n})
-df_n.index.name = 'index'
-df_n.to_csv(data_dir + '/combined_annotations_neg.csv')
+# splits all images/annotations based on their classifications
+# opens images/annotations from given paths; splits out the classes given in ann_dict (class name:#)
+# saves to default file names, unless out_im_paths/out_ann_paths (dictionaries with class name:file name) are defined
+def split_by_class(ann_dict, in_im_path, in_ann_path, out_im_paths = None, out_ann_paths = None):
+	images = np.load(in_im_path)
+	ann_df = pd.read_csv(in_ann_path,index_col='index')
+	for i, class_name in enumerate(ann_dict.keys()):
+		if ann_dict[class_name] >= 0:
+			idx = ann_df['annotation'].isin(ann_dict[class_name])
+			ann_class = ann_df.loc[idx,'annotation'].values.squeeze()
+			ann_split_df = pd.DataFrame({'annotation':ann_class}).set_index('index')
+			images_class = images[idx,]
 
-np.save(data_dir + '/combined_images_pos.npy',images_p)
-df_p = pd.DataFrame({'annotation':annotations_p})
-df_p.index.name = 'index'
-df_p.to_csv(data_dir + '/combined_annotations_pos.csv')
+			# save
+			if out_im_paths is None:
+				np.save(in_im_path.replace('.npy', '_' + class_name + '.npy'), images_class) # add class_name to file name
+			else:
+				if class_name in out_im_paths:
+					np.save(out_im_paths[class_name], images_class)
+				else:
+					print('Couldn\'t save image file for class: ' + class_name)
+			if out_ann_paths is None:
+				ann_split_df.to_csv(in_ann_path.replace('.csv', '_' + class_name + '.csv')) # add class_name to file name
+			else:
+				if class_name in out_ann_paths:
+					ann_split_df.to_csv(out_ann_paths[class_name])
+				else:
+					print('Couldn\'t save annotation file for class: ' + class_name)
 
-np.save(data_dir + '/combined_images_uns.npy',images_u)
-df_u = pd.DataFrame({'annotation':annotations_u})
-df_u.index.name = 'index'
-df_u.to_csv(data_dir + '/combined_annotations_uns.csv')
+# relabels all images annotated with value og_label (numerical) to have annotation new_label (numerical)
+def change_annotation_value(ann_dict, in_ann_path, og_label, new_label, out_ann_path = None):
+	ann_df = pd.read_csv(in_ann_path,index_col='index')
+	ann_df.loc[ann_df['annotation'] == og_label, 'annotation'] = new_label
+	ann_df.index.name = 'index'
 
-# save uns labeled as pos & uns labeled as neg datasets
+	# save
+	new_label = round(new_label)
+	if out_ann_path is None: # default: {og_class}_as_{new_class}.csv
+		out_ann_path = out_ann_path[:out_ann_path.index('.csv')]
+		out_ann_path += '_as_' 
+		out_ann_path += next((key for key, value in ann_dict.items() if value == round(new_label)), str(round(new_label)))
+		out_ann_path += '.csv'
+	ann_df.to_csv(out_ann_path)
 
-df_u['annotation'] = 1
-df_u.to_csv(data_dir + '/combined_annotations_uns_labeled_pos.csv')
+# split images from a class into correctly classified vs. misclassified
+def isolate_wrong_predictions(ann_dict, class_key, in_im_path, in_ann_w_pred_path, out_dir = None):
+	images = np.load(in_im_path)
+	ann_df = pd.read_csv(in_ann_w_pred_path,index_col='index')
 
-df_u['annotation'] = 0
-df_u.to_csv(data_dir + '/combined_annotations_uns_labeled_neg.csv')
+	# get indices
+	cond_ann = ann_df['annotation'] == ann_dict[class_key]
+	cond_labeled_w = ann_df[class_key + ' output'] < 0.5
+	cond_w = cond_ann & cond_labeled_w
+	idx_w = ann_df.loc[cond_w].index
 
-df_u['annotation'] = -1
-df_u.to_csv(data_dir + '/combined_annotations_uns_unlabeled.csv')
+	# get images / annotations
+	images_w = images[idx_w,]
+	ann_w = ann_df.loc[idx_w,'annotation'].values.squeeze()
+	ann_df_w = pd.DataFrame({'annotation':ann_w}).set_index('index')
 
-# save misclassified neg and correct neg datasets
-annotations_n_wrong, images_n_wrong, annotations_n_right, images_n_right = isolate_misclassified_neg(annotation_pd, images_all)
+	# save
+	if out_dir is None: # use the directory for input annotations
+		out_dir = '/'.join(in_ann_w_pred_path.split('/')[:-1]) + '/'
+	np.save(out_dir + '/combined_images_' + class_key + '_wrong.npy', images_w)
+	ann_df_w.to_csv(out_dir + '/combined_ann_' + class_key + '_wrong.csv')	
 
-print(images_n_wrong.shape)
+# train model given input annotations and images; output performance??
+def model_training(ann_dict, in_im_path, in_ann_path, out_ann_w_pred_path, out_model_path, model_specs, train_frac=0.7, n_epochs=40):
+	# model input prep!
+	# load in images and annotations
+	images = np.load(in_im_path)
+	ann_df = pd.read_csv(in_ann_path, index_col='index')
+	# manipulate images/annotations:
+	# remove unlabeled images from dataset
+	ann_df = ann_df[ann_df['annotation'].isin([val for val in ann_dict.values() if val >= 0])]
+	# round annotation labels (recall: they were made non-integers to keep unsure images separate)
+	ann_df_round = ann_df.copy()
+	ann_df_round['annotation'] = ann_df_round['annotation'].round()
+	# save annotations
+	annotations = ann_df_round['annotation'].values
+	indices = ann_df_round.index.to_numpy()
+	print(indices)
+	print(annotations)
+	images = images[indices,]
 
-np.save(data_dir + '/combined_images_neg_misclassified.npy',images_n_wrong)
-df_n_wrong = pd.DataFrame({'annotation':annotations_n_wrong})
-df_n_wrong.index.name = 'index'
-df_n_wrong.to_csv(data_dir + '/combined_annotations_neg_misclassified.csv')
+	# initialize the model
+	print('initialize the model')
+	n_classes_derived = ann_df_round['annotation'].nunique() # number of unique annotation classes in dataset
+	model = models.ResNet(model=model_specs['model_name'],n_channels=model_specs['n_channels'],n_filters=model_specs['n_filters'], n_classes=n_classes_derived,kernel_size=model_specs['kernel_size'],stride=model_specs['stride'],padding=model_specs['padding'])
 
-np.save(data_dir + '/combined_images_neg_correct.npy',images_n_right)
-df_n_right = pd.DataFrame({'annotation':annotations_n_right})
-df_n_right.index.name = 'index'
-df_n_right.to_csv(data_dir + '/combined_annotations_neg_correct.csv')
+	# train model: saves the trained model to out_model_path
+	train_model(model, images, annotations, out_model_path, train_frac, model_specs['batch_size'], n_epochs)
 
-# save misclassified pos and correct pos datasets
-annotations_p_wrong, images_p_wrong, annotations_p_right, images_p_right = isolate_misclassified_pos(annotation_pd, images_all)
+	# run model; saves the predictions to out_ann_w_pred_path
+	batch_size_inference = 2048
+	model_new = torch.load(out_model_path)
+	# pass in the annotations df without rounding (so that the saved ann_w_pred aren't rounded and we can identify the former-unsure images)
+	run_model(ann_dict, model_new, images, ann_df, out_ann_w_pred_path, batch_size_inference)
 
-print(images_p_wrong.shape)
+# helper function: trains the model given the initialized model, images, and annotations (and other params)
+def train_model(model, images, annotations, out_model_path, train_frac=0.7, batch_size=32, n_epochs=40):
+	model_best = None
 
-np.save(data_dir + '/combined_images_pos_misclassified.npy',images_p_wrong)
-df_p_wrong = pd.DataFrame({'annotation':annotations_p_wrong})
-df_p_wrong.index.name = 'index'
-df_p_wrong.to_csv(data_dir + '/combined_annotations_pos_misclassified.csv')
+	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+	model = model.to(device)
 
-np.save(data_dir + '/combined_images_pos_correct.npy',images_n_right)
-df_p_right = pd.DataFrame({'annotation':annotations_p_right})
-df_p_right.index.name = 'index'
-df_p_right.to_csv(data_dir + '/combined_annotations_pos_correct.csv')
+	# make images 0-1 if they are not already
+	if images.dtype == np.uint8:
+		images = images.astype(np.float32)/255.0 # convert to 0-1 if uint8 input
 
-# save misclassified neg and correct neg from neg slides
+	# shuffle
+	indices = np.random.choice(len(images), len(images), replace=False)
+	data = images[indices,:,:,:]
+	label = annotations[indices]
 
-annotations_n_wrong, images_n_wrong, annotations_n_right, images_n_right = isolate_misclassified_neg(annotation_pd_n, images_all_n)
+	# Split the data into train, validation, and test sets
+	X_train, X_val = np.split(data, [int(train_frac * len(data))])
+	y_train, y_val = np.split(label, [int(train_frac * len(label))])
 
-print(images_n_wrong.shape)
+	# Create TensorDatasets for train, validation and test
+	train_dataset = TensorDataset(torch.from_numpy(X_train), torch.from_numpy(y_train))
+	val_dataset = TensorDataset(torch.from_numpy(X_val), torch.from_numpy(y_val))
 
-np.save(data_dir_n + '/neg_combined_images_misclassified.npy',images_n_wrong)
-df_n_wrong = pd.DataFrame({'annotation':annotations_n_wrong})
-df_n_wrong.index.name = 'index'
-df_n_wrong.to_csv(data_dir_n + '/neg_combined_annotations_misclassified.csv')
+	# TODO: why is batch_size being set to 32 instead of batch_size
+	train_dataloader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=4)
+	val_dataloader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=4)
 
-np.save(data_dir_n + '/neg_combined_images_correct.npy',images_n_right)
-df_n_right = pd.DataFrame({'annotation':annotations_n_right})
-df_n_right.index.name = 'index'
-df_n_right.to_csv(data_dir_n + '/neg_combined_annotations_correct.csv')
+	# initialize stats
+	best_validation_loss = np.inf
 
-# COMBINING: for differentiators
+	# Define the loss function and optimizer
+	# can add weight parameter to differently weight classes; can also add label_smoothing to avoid overfitting
+	criterion = nn.CrossEntropyLoss()
+	optimizer = Adam(model.parameters(), lr=1e-3)
 
-# differentiator 1: uns as pos, the neg misclassified from neg slides
+	# initialize loss df
+	loss_df = pd.DataFrame(columns=['running loss', 'validation loss'])
+	# Training loops
+	for epoch in range(n_epochs):
+		running_loss = 0.0
+		model.train()
+		# by batch size?
+		for inputs, labels in train_dataloader:
+			inputs = inputs.float().to(device)
+			labels = labels.float().to(device)
+			
+			# Forward pass
+			outputs = model(inputs)
+			labels = labels.to(torch.long)
+			loss = criterion(outputs, labels)
 
-combine_dict = {data_dir + '/combined_images_uns': data_dir + '/combined_annotations_uns_labeled_pos'}
-combine_dict[data_dir_n + '/neg_combined_images_misclassified'] = data_dir_n + 'neg_combined_annotations_misclassified'
+			# Backward and optimize
+			optimizer.zero_grad()
+			loss.backward()
+			optimizer.step()
 
-idx_diff1 = combine_datasets(combine_dict, data_dir + '/diff1/combined_images_diff1', data_dir + '/diff1/combined_ann_diff1')
-num_uns = idx_diff1[0]
+			running_loss += loss.item()
 
-# differentiator 2: uns as pos, the pos misclassified from pos slides, the neg misclassified from neg slides
+		# Compute the validation performance
+		validation_loss = evaluate_model(model, val_dataloader, criterion, device)
+		if validation_loss < best_validation_loss:
+			best_validation_loss = validation_loss
+			model_best = copy.deepcopy(model)
+		# save running_loss and validation_loss
+		new_row = {'running loss': running_loss, 'validation loss': validation_loss}
+		loss_df = loss_df.append(new_row, ignore_index=True)
+		
+	# training complete
+	print('saving the last model to ' + out_model_path)
+	torch.save(model, out_model_path)
+	# TODO: save the best model as well
+	# if model_best is not None:
+	# 	print('saving the best model to ' + out_model_path.split('.')[0] + '_best_model.' + out_model_path.split('.')[1])
+	# 	torch.save(model_best, out_model_path.split('.')[0] + '_best_model.' + out_model_path.split('.')[1])
 
-# add to old dict
-combine_dict[data_dir + '/combined_images_pos_misclassified'] = data_dir + 'combined_annotations_pos_misclassified'
+def evaluate_model(model, dataloader, criterion, device):
+	model.eval()
 
-idx_diff2 = combine_datasets(combine_dict, data_dir + '/diff2/combined_images_diff2', data_dir + '/diff2/combined_ann_diff2')
+	total_loss = 0.0
+	with torch.no_grad():
+		for inputs, labels in dataloader:
+			inputs = inputs.float().to(device)
+			labels = labels.float().to(device)
 
-# differentiator 3: uns as uns, the pos misclassified from pos slides, the neg misclassified from neg slides
+			# Forward pass
+			outputs = model(inputs)
+			labels = labels.to(torch.long)
+			loss = criterion(outputs, labels)
 
-# modify old dict again
-combine_dict[data_dir + '/combined_images_uns'] = data_dir + 'combined_annotations_uns_unlabeled'
-print(combine_dict)
+			total_loss += loss.item()
+	return total_loss
 
-idx_diff3 = combine_datasets(combine_dict, data_dir + '/diff3/combined_images_diff3', data_dir + '/diff3/combined_ann_diff3')
+# runs the model and saves the annotations df to include prediction scores
+def run_model(ann_dict, model, images, ann_df, out_ann_w_pred_path, batch_size_inference=2048):
+	predictions, features = generate_predictions_and_features(model,images,batch_size_inference)
+	
+	# make dataframe for outputs
+	output_pd_cols = [key + ' output' for key, value in ann_dict.items() if value > -1]
+	output_pd = pd.DataFrame(index = np.arange(images.shape[0]))
+	for i, col in enumerate(output_pd_cols):
+		output_pd[col] = predictions[:,i]
+	
+	# add it to ann_df
+	ann_df = ann_df.filter(regex='^(?!.*output).*$', axis=1) # drop any output columns currently there
+	ann_w_pred_df = ann_df.merge(output_pd,left_index=True,right_index=True) # add in new outputs
+	ann_w_pred_df = ann_w_pred_df.sort_values(output_pd_cols[1],ascending=False) # sort by parasite predictions
 
-# COMBINING: for classifiers
+	# save
+	ann_w_pred_df.to_csv(out_ann_w_pred_path)
 
-# classifier 0: combined original (no change in annotations) -- already done
+# gets the predictions (and features?) given a model and input images
+def generate_predictions_and_features(model, images, batch_size_inference = 2048):
+	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+	model = model.to(device)
 
-# classifier 1: 
-# using diff 1: uns labeled as pos with probability >0.9 and neg otherwise
-# and all pos/neg from pos slides; all neg from neg slides
+	if images.dtype == np.uint8:
+		images = images.astype(np.float32)/255.0 # convert to 0-1 if uint8 input
 
-# to add: diff1 combined (and relabeled); pos/neg only; correct neg
+	# build dataset
+	dataset = TensorDataset(torch.from_numpy(images), torch.from_numpy(np.ones(images.shape[0])))
 
-idx_uns = np.arange(0,num_uns)
-diff_file_path = data_dir + '/diff1/combined_images_diff1_annotations_with_predictions'
-diff_relabeled_path = data_dir + '/diff1/combined_ann_diff1_relabeled_th0.9'
+	# dataloader
+	dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size_inference, shuffle=False)
 
-relabel_uns_likely_pos(diff_file_path, idx_uns, diff_relabeled_path)
+	# run inference 
+	all_features = []
+	all_predictions = []
+	t0 = time.time()
+	for k, (images, labels) in enumerate(dataloader):
+		images = images.float().to(device)
 
-combine_dict_c = {data_dir + '/diff1/combined_images_diff1': diff_relabeled_path}
-combine_dict_c[data_dir + '/combined_images_pos'] = data_dir + '/combined_annotations_pos'
-combine_dict_c[data_dir + '/combined_images_neg'] = data_dir + '/combined_annotations_neg'
-combine_dict_c[data_dir_n + '/neg_combined_images'] = data_dir_n + '/neg_combined_annotations'
+		predictions, features = model.get_predictions_and_features(images)
+		predictions = predictions.detach().cpu().numpy()
+		features = features.detach().cpu().numpy().squeeze()
 
-combine_datasets(combine_dict_c, data_dir + '/class1/class1_images', data_dir + '/class1/class1_annotations')
+		all_predictions.append(predictions)
+		all_features.append(features)
+	predictions = np.vstack(all_predictions)
+	features = np.vstack(all_features)
+	print('running inference on ' + str(predictions.shape[0]) + ' images took ' + str(time.time()-t0) + ' s')
 
-# classifier 2: 
-# using diff 2: uns labeled as pos with probability >0.9 and neg otherwise
-# and all pos/neg from pos slides; all neg from neg slides
+	return predictions, features
 
-idx_uns = np.arange(0,num_uns)
-diff_file_path = data_dir + '/diff2/combined_images_diff2_annotations_with_predictions'
-diff_relabeled_path = data_dir + '/diff2/combined_ann_diff2_relabeled_th0.9'
+# relabel all unsure images based on their parasite (class with label 1) prediction
+# diff here means differentiator
+# saves full unsure pd (including non-unsure images)
+def relabel_uns_by_diff_predictions(in_ann_w_pred_path, class_val, class_name = 'unsure', out_ann_path = None, relabel_thresh = 0.9, class_to_relabel_by = 'parasite'):
+	diff_ann_df = pd.read_csv(in_ann_w_pred_path, index_col='index')
+	cond_ann = diff_ann_df['annotation'] == class_val
+	cond_pos = diff_ann_df[class_to_relabel_by + ' output'] > relabel_thresh
+	cond = cond_ann & cond_pos
+	cond_not = cond_ann & ~cond_pos
 
-relabel_uns_likely_pos(diff_file_path, idx_uns, diff_relabeled_path)
+	# relabel and trim annotation dataframe
+	diff_ann_df.loc[cond, 'annotation'] = 1
+	diff_ann_df.loc[cond_not, 'annotation'] = 0
+	diff_ann_df = diff_ann_df.loc[cond_ann] # only keep rows for images of class_name (unsure)
+	diff_ann_df = diff_ann_df.loc[:, ~diff_ann_df.columns.str.contains('output')] # remove all output columns
 
-combine_dict_c.pop(data_dir + '/diff1/combined_images_diff1')
-combine_dict_c[data_dir + '/diff2/combined_images_diff2'] = diff_relabeled_path
-combine_datasets(combine_dict_c, data_dir + '/class2/class2_images', data_dir + '/class2/class2_annotations')
+	# save
+	if out_ann_path is None: # default path
+		diff_ann_relabeled_path = '/'.join(in_ann_w_pred_path.split('/')[:-1]) + '/' + class_name + '_relabeled_thresh_' + "{:.1f}".format(relabel_thresh) + '.csv'
+	diff_ann_df.to_csv(diff_ann_relabeled_path)
 
-# classifier 3: 
-# using diff 3: uns labeled as pos with probability >0.9 and neg otherwise
-# and all pos/neg from pos slides; all neg from neg slides
+# sample strat_name: s_1a
+# sample uns_label: 0.8 (what the unsures were relabeled as)
+def differentiator_classifier_wrapper(strat_name, uns_label, combine_dict_diff, combine_dict_cl, model_spec = model_spec1):
+	# train differentiator
+	# combine datasets for differentiator
+	diff_images_path = data_dir_base + '/' + strat_name + '/combined_images_diff.npy'
+	diff_ann_path = data_dir_base + '/' + strat_name + '/combined_ann_diff.csv'
+	combine_datasets(combine_dict_diff, diff_images_path, diff_ann_path)
 
-idx_uns = np.arange(0,num_uns)
-diff_file_path = data_dir + '/diff3/combined_images_diff3_annotations_with_predictions'
-diff_relabeled_path = data_dir + '/diff3/combined_ann_diff3_relabeled_th0.9'
+	# train differentiator 1
+	diff_ann_w_pred_path = data_dir_base + '/' + strat_name + '/ann_with_predictions_diff.csv'
+	diff_model_perf_path = data_dir_base + '/' + strat_name + '/model_perf_diff.pt'
+	model_training(ann_dict, diff_images_path, diff_ann_path, diff_ann_w_pred_path, diff_model_perf_path, model_spec)
 
-relabel_uns_likely_pos(diff_file_path, idx_uns, diff_relabeled_path)
+	# relabel unsures with differentiator 1
+	# save to something like: data_dir + '/s_1a/unsure_relabeled_thresh_0.9.csv'
+	relabel_uns_by_diff_predictions(diff_ann_w_pred_path, uns_label)
 
-combine_dict_c.pop(data_dir + '/diff2/combined_images_diff2')
-combine_dict_c[data_dir + '/diff3/combined_images_diff3'] = diff_relabeled_path
-combine_datasets(combine_dict_c, data_dir + '/class3/class3_images', data_dir + '/class3/class3_annotations')
+	# train classifier 1
+	# combine datasets for classifier 1
+	cl_images_path = data_dir_base + '/' + strat_name + '/combined_images_cl.npy'
+	cl_ann_path = data_dir_base + '/' + strat_name + '/combined_ann_cl.csv'
+	combine_datasets(combine_dict_cl, cl_images_path, cl_ann_path)
 
-# classifier 4:
-# uns labeled as neg
-# and all pos/neg from pos slides; all neg from neg slides
+	# train classifier 1
+	cl_ann_w_pred_path = data_dir_base + '/' + strat_name + '/ann_with_predictions_cl.csv'
+	cl_model_perf_path = data_dir_base + '/' + strat_name + '/model_perf_cl.pt'
+	model_training(ann_dict, cl_images_path, cl_ann_s_1a_path, cl_ann_w_pred_path, cl_model_perf_path, model_spec)
 
-combine_dict_c.pop(data_dir + '/diff3/combined_images_diff3')
-combine_dict_c[data_dir + 'combined_images_uns'] = data_dir + 'combined_annotations_uns_labeled_neg'
-combine_datasets(combine_dict_c, data_dir + '/class4/class4_images', data_dir + '/class4/class4_annotations')
+# SET-UP
+
+# set up images and ann to filter
+
+# combine patient and negative slide images
+slide_images_dict = {}
+slide_images_dict[data_dir + '/patient_combined_images.npy'] = data_dir + '/patient_combined_ann.csv'
+slide_images_dict[data_dir_n + '/neg_combined_images.npy'] = data_dir_n + '/neg_combined_ann.csv'
+
+combined_image_path = data_dir + '/combined_images.npy'
+combined_ann_path = data_dir + '/combined_ann.npy'
+combine_datasets(slide_images_dict, combined_image_path, combined_ann_path)
+
+# split the combined images by class
+split_by_class(ann_dict, combined_image_path, combined_ann_path)
+# save combined parasite and non-parasite images
+pos_neg_dict = {}
+pos_neg_dict[data_dir + '/combined_images_non-parasite.npy'] = data_dir + '/combined_ann_non-parasite.csv'
+pos_neg_dict[data_dir + '/combined_images_parasite.npy'] = data_dir + '/combined_ann_parasite.csv'
+
+pos_neg_image_path = data_dir + '/combined_images_parasite_and_non-parasite.npy' 
+pos_neg_ann_path = data_dir + '/combined_ann_parasite_and_non-parasite.csv'
+combine_datasets(pos_neg_dict, pos_neg_image_path, pos_neg_ann_path)
+# save the unsure images, but labeled as various classes (pos, neg, unlabeled)
+unsure_ann_path = data_dir + '/combined_ann_unsure.csv'
+change_annotation_value(ann_dict, unsure_ann_path, 2, 0.8) # parasite
+change_annotation_value(ann_dict, unsure_ann_path, 2, 0.2) # non-parasite
+change_annotation_value(ann_dict, unsure_ann_path, 2, -0.8) # unlabeled
 
 
+# FIRST CLASSIFIERS
 
+# SA: classifier run on all images (in all 3 classes)
+cl_sa_ann_w_pred_path = data_dir_base + '/s_a/ann_with_predictions.csv'
+cl_sa_model_path = data_dir_base + '/s_a/model_perf.pt'
+model_training(ann_dict, combined_image_path, combined_ann_path, cl_sa_ann_w_pred_path, cl_sa_model_path, model_spec1)
+
+# SB: classifier run on all pos/neg images (not unsure)
+cl_sb_ann_w_pred_path = data_dir_base + '/s_b/ann_with_predictions.csv'
+cl_sb_model_path = data_dir_base + '/s_b/model_perf.pt'
+model_training(ann_dict, pos_neg_image_path, pos_neg_ann_path, cl_sa_ann_w_pred_path, cl_sa_model_path, model_spec1)
+
+# "WRONG" PREDICTIONS BY ANNOTATION
+# SA: use SA classifier to split out parasite/non-parasite images that are wrong
+# saves to data_dir_base + ‘/s_a/combined_images_parasite_wrong.npy’ and data_dir_base + ‘/s_a/combined_ann_parasite_wrong.csv'
+isolate_wrong_predictions(ann_dict, 'parasite', combined_image_path, cl_sa_ann_w_pred_path)
+# saves to data_dir_base + ‘/s_a/combined_images_non-parasite_wrong.npy’ and data_dir_base + ‘/s_a/combined_ann_non-parasite_wrong.csv'
+isolate_wrong_predictions(ann_dict, 'non-parasite', combined_image_path, cl_sa_ann_w_pred_path)
+
+# SB: use SB classifier to split out parasite/non-parasite images that are wrong
+# saves to data_dir_base + ‘/s_b/combined_images_parasite_wrong.npy’ and data_dir_base + ‘/s_b/combined_ann_parasite_wrong.csv'
+isolate_wrong_predictions(ann_dict, 'parasite', pos_neg_image_path, cl_sb_ann_w_pred_path)
+# saves to data_dir_base + ‘/s_b/combined_images_non-parasite_wrong.npy’ and data_dir_base + ‘/s_b/combined_ann_non-parasite_wrong.csv'
+isolate_wrong_predictions(ann_dict, 'non-parasite', pos_neg_image_path, cl_sb_ann_w_pred_path)
+
+# START STRATEGIES 1-3: differentiator pipelines
+# S1: differentiator uses unsure labeled as parasite and wrong non-parasite
+# S1.A: using "wrong" as defined by classifier A
+
+# datasets to combine for differentiator 1a
+combine_dict_diff = {}
+combine_dict_diff[data_dir + '/combined_images_unsure.npy'] = data_dir + '/combined_ann_unsure_as_parasite.csv'
+combine_dict_diff[data_dir_base + '/s_a/combined_images_non-parasite_wrong.npy'] = data_dir_base + '/s_a/combined_ann_non-parasite_wrong.csv'
+
+# datasets to combine for classifier 1a: note that the relabeling hasn't actually happened yet!
+combine_dict_cl = {}
+combine_dict_cl[data_dir + '/combined_images_parasite_and_non-parasite.npy'] = data_dir + '/combined_ann_parasite_and_non-parasite.npy'
+combine_dict_cl[data_dir + '/combined_images_unsure.npy'] = data_dir_base + '/s_1a/unsure_relabeled_thresh_0.9.csv'
+
+differentiator_classifier_wrapper('s_1a', 0.8, combine_dict_diff, combine_dict_cl, model_spec1)
+
+# S1.B: using "wrong" as defined by classifier B
+
+# datasets to combine for differentiator 1b
+combine_dict_diff = {}
+combine_dict_diff[data_dir + '/combined_images_unsure.npy'] = data_dir + '/combined_ann_unsure_as_parasite.csv'
+combine_dict_diff[data_dir_base + '/s_b/combined_images_non-parasite_wrong.npy'] = data_dir_base + '/s_b/combined_ann_non-parasite_wrong.csv'
+
+# datasets to combine for classifier 1b: note that the relabeling hasn't actually happened yet!
+combine_dict_cl = {}
+combine_dict_cl[data_dir + '/combined_images_parasite_and_non-parasite.npy'] = data_dir + '/combined_ann_parasite_and_non-parasite.npy'
+combine_dict_cl[data_dir + '/combined_images_unsure.npy'] = data_dir_base + '/s_1b/unsure_relabeled_thresh_0.9.csv'
+
+differentiator_classifier_wrapper('s_1b', 0.8, combine_dict_diff, combine_dict_cl, model_spec1)
+
+# S2: differentiator uses unsure labeled as parasite, wrong non-parasite, and wrong parasite
+# S2.A: using "wrong" as defined by classifier A
+
+# datasets to combine for differentiator 2a
+combine_dict_diff = {}
+combine_dict_diff[data_dir + '/combined_images_unsure.npy'] = data_dir + '/combined_ann_unsure_as_parasite.csv'
+combine_dict_diff[data_dir_base + '/s_a/combined_images_non-parasite_wrong.npy'] = data_dir_base + '/s_a/combined_ann_non-parasite_wrong.csv'
+combine_dict_diff[data_dir_base + '/s_a/combined_images_parasite_wrong.npy'] = data_dir_base + '/s_a/combined_ann_parasite_wrong.csv'
+
+# datasets to combine for classifier 2a: note that the relabeling hasn't actually happened yet!
+combine_dict_cl = {}
+combine_dict_cl[data_dir + '/combined_images_parasite_and_non-parasite.npy'] = data_dir + '/combined_ann_parasite_and_non-parasite.npy'
+combine_dict_cl[data_dir + '/combined_images_unsure.npy'] = data_dir_base + '/s_2a/unsure_relabeled_thresh_0.9.csv'
+
+differentiator_classifier_wrapper('s_2a', 0.8, combine_dict_diff, combine_dict_cl, model_spec1)
+
+# S2.B: using "wrong" as defined by classifier A
+
+# datasets to combine for differentiator 2b
+combine_dict_diff = {}
+combine_dict_diff[data_dir + '/combined_images_unsure.npy'] = data_dir + '/combined_ann_unsure_as_parasite.csv'
+combine_dict_diff[data_dir_base + '/s_b/combined_images_non-parasite_wrong.npy'] = data_dir_base + '/s_b/combined_ann_non-parasite_wrong.csv'
+combine_dict_diff[data_dir_base + '/s_b/combined_images_parasite_wrong.npy'] = data_dir_base + '/s_b/combined_ann_parasite_wrong.csv'
+
+# datasets to combine for classifier 2b: note that the relabeling hasn't actually happened yet!
+combine_dict_cl = {}
+combine_dict_cl[data_dir + '/combined_images_parasite_and_non-parasite.npy'] = data_dir + '/combined_ann_parasite_and_non-parasite.npy'
+combine_dict_cl[data_dir + '/combined_images_unsure.npy'] = data_dir_base + '/s_2b/unsure_relabeled_thresh_0.9.csv'
+
+differentiator_classifier_wrapper('s_2b', 0.8, combine_dict_diff, combine_dict_cl, model_spec1)
+
+# S3: differentiator uses unsure not labeled, wrong non-parasite, and wrong parasite
+# S3.A: using "wrong" as defined by classifier A
+
+# datasets to combine for differentiator 3a
+combine_dict_diff = {}
+combine_dict_diff[data_dir + '/combined_images_unsure.npy'] = data_dir + '/combined_ann_unsure_as_unlabeled.csv'
+combine_dict_diff[data_dir_base + '/s_a/combined_images_non-parasite_wrong.npy'] = data_dir_base + '/s_a/combined_ann_non-parasite_wrong.csv'
+combine_dict_diff[data_dir_base + '/s_a/combined_images_parasite_wrong.npy'] = data_dir_base + '/s_a/combined_ann_parasite_wrong.csv'
+
+# datasets to combine for classifier 3a: note that the relabeling hasn't actually happened yet!
+combine_dict_cl = {}
+combine_dict_cl[data_dir + '/combined_images_parasite_and_non-parasite.npy'] = data_dir + '/combined_ann_parasite_and_non-parasite.npy'
+combine_dict_cl[data_dir + '/combined_images_unsure.npy'] = data_dir_base + '/s_3a/unsure_relabeled_thresh_0.9.csv'
+
+differentiator_classifier_wrapper('s_3a', 0.8, combine_dict_diff, combine_dict_cl, model_spec1)
+
+# S3.B: using "wrong" as defined by classifier B
+
+# datasets to combine for differentiator 3b
+combine_dict_diff = {}
+combine_dict_diff[data_dir + '/combined_images_unsure.npy'] = data_dir + '/combined_ann_unsure_as_unlabeled.csv'
+combine_dict_diff[data_dir_base + '/s_b/combined_images_non-parasite_wrong.npy'] = data_dir_base + '/s_b/combined_ann_non-parasite_wrong.csv'
+combine_dict_diff[data_dir_base + '/s_b/combined_images_parasite_wrong.npy'] = data_dir_base + '/s_b/combined_ann_parasite_wrong.csv'
+
+# datasets to combine for classifier 3b: note that the relabeling hasn't actually happened yet!
+combine_dict_cl = {}
+combine_dict_cl[data_dir + '/combined_images_parasite_and_non-parasite.npy'] = data_dir + '/combined_ann_parasite_and_non-parasite.npy'
+combine_dict_cl[data_dir + '/combined_images_unsure.npy'] = data_dir_base + '/s_3b/unsure_relabeled_thresh_0.9.csv'
+
+differentiator_classifier_wrapper('s_3b', 0.8, combine_dict_diff, combine_dict_cl, model_spec1)
