@@ -87,8 +87,8 @@ def train_model(model,images,annotations,batch_size,n_epochs,model_name,annotati
     train_dataset = TensorDataset(torch.from_numpy(X_train), torch.from_numpy(y_train))
     val_dataset = TensorDataset(torch.from_numpy(X_val), torch.from_numpy(y_val))
 
-    train_dataloader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=4)
-    val_dataloader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=4)
+    train_dataloader = DataLoader(train_dataset, batch_size, shuffle=True, num_workers=4)
+    val_dataloader = DataLoader(val_dataset, batch_size, shuffle=False, num_workers=4)
 
     # initialize stats
     best_validation_loss = np.inf
@@ -195,7 +195,7 @@ def train_model(model,images,annotations,batch_size,n_epochs,model_name,annotati
             caller.model = copy.deepcopy(model_best)
             caller.model_loaded = True
             print('saving the model to ' + model_name + '.pt')
-            torch.save(model, model_name + '.pt')
+            torch.save(model_best, model_name + '.pt')
         caller.signal_training_complete.emit()
 
 def evaluate_model(model, dataloader, criterion, device, annotations_dict):

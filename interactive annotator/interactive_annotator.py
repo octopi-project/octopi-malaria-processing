@@ -1611,6 +1611,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         self.dataHandler.save_annotations()
+        torch.cuda.empty_cache() # TODO: not sure
         event.accept()
 
 ###########################################################################################

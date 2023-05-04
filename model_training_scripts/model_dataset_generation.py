@@ -49,7 +49,8 @@ def combine_datasets(combine_dict, out_image_path, out_ann_path):
 	print('The combined images have shape: '); print(images.shape)
 
 	annotations = np.concatenate(annotations)
-	comb_ann_df = pd.DataFrame({'annotation':annotations}).set_index('index')
+	comb_ann_df = pd.DataFrame({'annotation':annotations})
+	comb_ann_df.index.name = 'index'
 
 	# save
 	np.save(out_image_path, images)
@@ -63,9 +64,10 @@ def split_by_class(ann_dict, in_im_path, in_ann_path, out_im_paths = None, out_a
 	ann_df = pd.read_csv(in_ann_path,index_col='index')
 	for i, class_name in enumerate(ann_dict.keys()):
 		if ann_dict[class_name] >= 0:
-			idx = ann_df['annotation'].isin(ann_dict[class_name])
+			idx = ann_df['annotation'] == ann_dict[class_name]
 			ann_class = ann_df.loc[idx,'annotation'].values.squeeze()
-			ann_split_df = pd.DataFrame({'annotation':ann_class}).set_index('index')
+			ann_split_df = pd.DataFrame({'annotation':ann_class})
+			ann_split_df.index.name = 'index'
 			images_class = images[idx,]
 
 			# save
@@ -88,13 +90,11 @@ def split_by_class(ann_dict, in_im_path, in_ann_path, out_im_paths = None, out_a
 def change_annotation_value(ann_dict, in_ann_path, og_label, new_label, out_ann_path = None):
 	ann_df = pd.read_csv(in_ann_path,index_col='index')
 	ann_df.loc[ann_df['annotation'] == og_label, 'annotation'] = new_label
-	ann_df.index.name = 'index'
 
 	# save
 	new_label = round(new_label)
 	if out_ann_path is None: # default: {og_class}_as_{new_class}.csv
-		out_ann_path = out_ann_path[:out_ann_path.index('.csv')]
-		out_ann_path += '_as_' 
+		out_ann_path = 'combined_ann_unsure_as_' 
 		out_ann_path += next((key for key, value in ann_dict.items() if value == round(new_label)), str(round(new_label)))
 		out_ann_path += '.csv'
 	ann_df.to_csv(out_ann_path)
@@ -113,7 +113,8 @@ def isolate_wrong_predictions(ann_dict, class_key, in_im_path, in_ann_w_pred_pat
 	# get images / annotations
 	images_w = images[idx_w,]
 	ann_w = ann_df.loc[idx_w,'annotation'].values.squeeze()
-	ann_df_w = pd.DataFrame({'annotation':ann_w}).set_index('index')
+	ann_df_w = pd.DataFrame({'annotation':ann_w})
+	ann_df_w.index.name = 'index'
 
 	# save
 	if out_dir is None: # use the directory for input annotations
@@ -122,7 +123,7 @@ def isolate_wrong_predictions(ann_dict, class_key, in_im_path, in_ann_w_pred_pat
 	ann_df_w.to_csv(out_dir + '/combined_ann_' + class_key + '_wrong.csv')	
 
 # train model given input annotations and images; output performance??
-def model_training(ann_dict, in_im_path, in_ann_path, out_ann_w_pred_path, out_model_path, model_specs, train_frac=0.7, n_epochs=40):
+def model_training(ann_dict, in_im_path, in_ann_path, out_ann_w_pred_path, out_model_path, model_specs, train_frac=0.7, n_epochs=20):
 	# model input prep!
 	# load in images and annotations
 	images = np.load(in_im_path)
@@ -146,11 +147,14 @@ def model_training(ann_dict, in_im_path, in_ann_path, out_ann_w_pred_path, out_m
 	model = models.ResNet(model=model_specs['model_name'],n_channels=model_specs['n_channels'],n_filters=model_specs['n_filters'], n_classes=n_classes_derived,kernel_size=model_specs['kernel_size'],stride=model_specs['stride'],padding=model_specs['padding'])
 
 	# train model: saves the trained model to out_model_path
+	print('train the model')
 	train_model(model, images, annotations, out_model_path, train_frac, model_specs['batch_size'], n_epochs)
 
 	# run model; saves the predictions to out_ann_w_pred_path
 	batch_size_inference = 2048
+	print('load trained model')
 	model_new = torch.load(out_model_path)
+	print('run model')
 	# pass in the annotations df without rounding (so that the saved ann_w_pred aren't rounded and we can identify the former-unsure images)
 	run_model(ann_dict, model_new, images, ann_df, out_ann_w_pred_path, batch_size_inference)
 
@@ -170,6 +174,7 @@ def train_model(model, images, annotations, out_model_path, train_frac=0.7, batc
 	data = images[indices,:,:,:]
 	label = annotations[indices]
 
+	print('splitting with ' + str(round(train_frac,1)) + ':' + str(round(1-train_frac,1)) + ' train:test split')
 	# Split the data into train, validation, and test sets
 	X_train, X_val = np.split(data, [int(train_frac * len(data))])
 	y_train, y_val = np.split(label, [int(train_frac * len(label))])
@@ -178,9 +183,8 @@ def train_model(model, images, annotations, out_model_path, train_frac=0.7, batc
 	train_dataset = TensorDataset(torch.from_numpy(X_train), torch.from_numpy(y_train))
 	val_dataset = TensorDataset(torch.from_numpy(X_val), torch.from_numpy(y_val))
 
-	# TODO: why is batch_size being set to 32 instead of batch_size
-	train_dataloader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=4)
-	val_dataloader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=4)
+	train_dataloader = DataLoader(train_dataset, batch_size, shuffle=True, num_workers=4)
+	val_dataloader = DataLoader(val_dataset, batch_size, shuffle=False, num_workers=4)
 
 	# initialize stats
 	best_validation_loss = np.inf
@@ -190,6 +194,7 @@ def train_model(model, images, annotations, out_model_path, train_frac=0.7, batc
 	criterion = nn.CrossEntropyLoss()
 	optimizer = Adam(model.parameters(), lr=1e-3)
 
+	print('loss df')
 	# initialize loss df
 	loss_df = pd.DataFrame(columns=['running loss', 'validation loss'])
 	# Training loops
@@ -219,12 +224,13 @@ def train_model(model, images, annotations, out_model_path, train_frac=0.7, batc
 			best_validation_loss = validation_loss
 			model_best = copy.deepcopy(model)
 		# save running_loss and validation_loss
-		new_row = {'running loss': running_loss, 'validation loss': validation_loss}
-		loss_df = loss_df.append(new_row, ignore_index=True)
+		new_loss = pd.DataFrame({'running loss': running_loss, 'validation loss': validation_loss}, index=[0])
+		print('Epoch ' + str(epoch) + ': running loss - '); print(running_loss); print('; validation loss - '); print(validation_loss)
+		loss_df = pd.concat([loss_df, new_loss], ignore_index=True)
 		
 	# training complete
-	print('saving the last model to ' + out_model_path)
-	torch.save(model, out_model_path)
+	print('saving the best model to ' + out_model_path)
+	torch.save(model_best, out_model_path)
 	# TODO: save the best model as well
 	# if model_best is not None:
 	# 	print('saving the best model to ' + out_model_path.split('.')[0] + '_best_model.' + out_model_path.split('.')[1])
@@ -348,8 +354,9 @@ def differentiator_classifier_wrapper(strat_name, uns_label, combine_dict_diff, 
 	cl_model_perf_path = data_dir_base + '/' + strat_name + '/model_perf_cl.pt'
 	model_training(ann_dict, cl_images_path, cl_ann_s_1a_path, cl_ann_w_pred_path, cl_model_perf_path, model_spec)
 
-# SET-UP
 
+# SET-UP
+print('set up!')
 # set up images and ann to filter
 
 # combine patient and negative slide images
@@ -358,11 +365,11 @@ slide_images_dict[data_dir + '/patient_combined_images.npy'] = data_dir + '/pati
 slide_images_dict[data_dir_n + '/neg_combined_images.npy'] = data_dir_n + '/neg_combined_ann.csv'
 
 combined_image_path = data_dir + '/combined_images.npy'
-combined_ann_path = data_dir + '/combined_ann.npy'
-combine_datasets(slide_images_dict, combined_image_path, combined_ann_path)
+combined_ann_path = data_dir + '/combined_ann.csv'
+# combine_datasets(slide_images_dict, combined_image_path, combined_ann_path)
 
 # split the combined images by class
-split_by_class(ann_dict, combined_image_path, combined_ann_path)
+# split_by_class(ann_dict, combined_image_path, combined_ann_path)
 # save combined parasite and non-parasite images
 pos_neg_dict = {}
 pos_neg_dict[data_dir + '/combined_images_non-parasite.npy'] = data_dir + '/combined_ann_non-parasite.csv'
@@ -370,15 +377,56 @@ pos_neg_dict[data_dir + '/combined_images_parasite.npy'] = data_dir + '/combined
 
 pos_neg_image_path = data_dir + '/combined_images_parasite_and_non-parasite.npy' 
 pos_neg_ann_path = data_dir + '/combined_ann_parasite_and_non-parasite.csv'
-combine_datasets(pos_neg_dict, pos_neg_image_path, pos_neg_ann_path)
+# combine_datasets(pos_neg_dict, pos_neg_image_path, pos_neg_ann_path)
 # save the unsure images, but labeled as various classes (pos, neg, unlabeled)
 unsure_ann_path = data_dir + '/combined_ann_unsure.csv'
-change_annotation_value(ann_dict, unsure_ann_path, 2, 0.8) # parasite
-change_annotation_value(ann_dict, unsure_ann_path, 2, 0.2) # non-parasite
-change_annotation_value(ann_dict, unsure_ann_path, 2, -0.8) # unlabeled
+# change_annotation_value(ann_dict, unsure_ann_path, 2, 0.8) # parasite
+# change_annotation_value(ann_dict, unsure_ann_path, 2, 0.2) # non-parasite
+# change_annotation_value(ann_dict, unsure_ann_path, 2, -0.8) # unlabeled
+
+# # SANITY CHECK; TODO: remove
+
+# # set up
+# # try on 9K images from patient_combined_images/ann; get 3K of each class
+# ann_path_sanity = data_dir + '/patient_combined_ann.csv'
+# ann_df_sanity = pd.read_csv(ann_path_sanity, index_col='index')
+# im_path_sanity = data_dir + '/patient_combined_images.npy'
+# im_sanity = np.load(im_path_sanity)
+
+# # Group the DataFrame by 'annotation' column
+# grouped = ann_df_sanity.groupby('annotation')
+
+# # List to store the indices
+# indices = []
+
+# # Retrieve 3000 random indices for each unique element
+# for key, group in grouped:
+# 	if key >= 0:
+# 	    unique_element_indices = group.index[:3000].tolist()
+# 	    indices.extend(unique_element_indices)
+
+# print(indices)
+# ann_df_sanity = ann_df_sanity.loc[indices,:]
+# print(ann_df_sanity)
+# ann_df_sanity = ann_df_sanity['annotation'].values.squeeze()
+# ann_df_sanity = pd.DataFrame({'annotation':ann_df_sanity})
+# ann_df_sanity.index.name = 'index'
+# im_sanity = im_sanity[indices,]
+
+# print(ann_df_sanity)
+
+# combined_ann_path = data_dir_base + '/sanity/combined_ann.csv'
+# combined_image_path = data_dir_base + '/sanity/combined_im.npy'
+# ann_df_sanity.to_csv(combined_ann_path)
+# np.save(combined_image_path, im_sanity)
+
+# cl_san_ann_w_pred_path = data_dir_base + '/sanity/ann_with_predictions.csv'
+# cl_san_model_path = data_dir_base + '/sanity/model_perf.pt'
+# model_training(ann_dict, combined_image_path, combined_ann_path, cl_san_ann_w_pred_path, cl_san_model_path, model_spec1)
 
 
 # FIRST CLASSIFIERS
+print('first classifiers!')
 
 # SA: classifier run on all images (in all 3 classes)
 cl_sa_ann_w_pred_path = data_dir_base + '/s_a/ann_with_predictions.csv'
@@ -391,6 +439,7 @@ cl_sb_model_path = data_dir_base + '/s_b/model_perf.pt'
 model_training(ann_dict, pos_neg_image_path, pos_neg_ann_path, cl_sa_ann_w_pred_path, cl_sa_model_path, model_spec1)
 
 # "WRONG" PREDICTIONS BY ANNOTATION
+print('get wrong predictions!')
 # SA: use SA classifier to split out parasite/non-parasite images that are wrong
 # saves to data_dir_base + ‘/s_a/combined_images_parasite_wrong.npy’ and data_dir_base + ‘/s_a/combined_ann_parasite_wrong.csv'
 isolate_wrong_predictions(ann_dict, 'parasite', combined_image_path, cl_sa_ann_w_pred_path)
@@ -406,6 +455,7 @@ isolate_wrong_predictions(ann_dict, 'non-parasite', pos_neg_image_path, cl_sb_an
 # START STRATEGIES 1-3: differentiator pipelines
 # S1: differentiator uses unsure labeled as parasite and wrong non-parasite
 # S1.A: using "wrong" as defined by classifier A
+print('S1.A')
 
 # datasets to combine for differentiator 1a
 combine_dict_diff = {}
@@ -420,6 +470,7 @@ combine_dict_cl[data_dir + '/combined_images_unsure.npy'] = data_dir_base + '/s_
 differentiator_classifier_wrapper('s_1a', 0.8, combine_dict_diff, combine_dict_cl, model_spec1)
 
 # S1.B: using "wrong" as defined by classifier B
+print('S1.B')
 
 # datasets to combine for differentiator 1b
 combine_dict_diff = {}
@@ -435,6 +486,7 @@ differentiator_classifier_wrapper('s_1b', 0.8, combine_dict_diff, combine_dict_c
 
 # S2: differentiator uses unsure labeled as parasite, wrong non-parasite, and wrong parasite
 # S2.A: using "wrong" as defined by classifier A
+print('S2.A')
 
 # datasets to combine for differentiator 2a
 combine_dict_diff = {}
@@ -450,6 +502,7 @@ combine_dict_cl[data_dir + '/combined_images_unsure.npy'] = data_dir_base + '/s_
 differentiator_classifier_wrapper('s_2a', 0.8, combine_dict_diff, combine_dict_cl, model_spec1)
 
 # S2.B: using "wrong" as defined by classifier A
+print('S2.B')
 
 # datasets to combine for differentiator 2b
 combine_dict_diff = {}
@@ -466,6 +519,7 @@ differentiator_classifier_wrapper('s_2b', 0.8, combine_dict_diff, combine_dict_c
 
 # S3: differentiator uses unsure not labeled, wrong non-parasite, and wrong parasite
 # S3.A: using "wrong" as defined by classifier A
+print('S3.A')
 
 # datasets to combine for differentiator 3a
 combine_dict_diff = {}
@@ -481,6 +535,7 @@ combine_dict_cl[data_dir + '/combined_images_unsure.npy'] = data_dir_base + '/s_
 differentiator_classifier_wrapper('s_3a', 0.8, combine_dict_diff, combine_dict_cl, model_spec1)
 
 # S3.B: using "wrong" as defined by classifier B
+print('S3.B')
 
 # datasets to combine for differentiator 3b
 combine_dict_diff = {}
@@ -494,3 +549,5 @@ combine_dict_cl[data_dir + '/combined_images_parasite_and_non-parasite.npy'] = d
 combine_dict_cl[data_dir + '/combined_images_unsure.npy'] = data_dir_base + '/s_3b/unsure_relabeled_thresh_0.9.csv'
 
 differentiator_classifier_wrapper('s_3b', 0.8, combine_dict_diff, combine_dict_cl, model_spec1)
+
+torch.cuda.empty_cache() # TODO: not sure
