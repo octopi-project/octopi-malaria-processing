@@ -39,6 +39,7 @@ def combine_datasets(combine_dict, out_image_path, out_ann_path):
 	for npy_path in list(combine_dict.keys()):
 		images_ = np.load(npy_path)
 		ann_pd = pd.read_csv(combine_dict[npy_path],index_col='index')
+		ann_pd = ann_pd.sort_index()
 		annotations_ = ann_pd['annotation'].values.squeeze()
 
 		images.append(images_)
@@ -94,9 +95,11 @@ def change_annotation_value(ann_dict, in_ann_path, og_label, new_label, out_ann_
 	# save
 	new_label = round(new_label)
 	if out_ann_path is None: # default: {og_class}_as_{new_class}.csv
-		out_ann_path = 'combined_ann_unsure_as_' 
+		out_ann_path = "/".join(in_ann_path.split("/")[:-1])
+		out_ann_path += '/combined_ann_unsure_as_' 
 		out_ann_path += next((key for key, value in ann_dict.items() if value == round(new_label)), str(round(new_label)))
 		out_ann_path += '.csv'
+	print('Saving to: ' + out_ann_path)
 	ann_df.to_csv(out_ann_path)
 
 # split images from a class into correctly classified vs. misclassified
@@ -123,23 +126,21 @@ def isolate_wrong_predictions(ann_dict, class_key, in_im_path, in_ann_w_pred_pat
 	ann_df_w.to_csv(out_dir + '/combined_ann_' + class_key + '_wrong.csv')	
 
 # train model given input annotations and images; output performance??
-def model_training(ann_dict, in_im_path, in_ann_path, out_ann_w_pred_path, out_model_path, model_specs, train_frac=0.7, n_epochs=20):
+def model_training(ann_dict, in_im_path, in_ann_path, out_ann_w_pred_path, out_model_path, model_specs, train_frac=0.7, n_epochs=40):
 	# model input prep!
 	# load in images and annotations
 	images = np.load(in_im_path)
 	ann_df = pd.read_csv(in_ann_path, index_col='index')
 	# manipulate images/annotations:
-	# remove unlabeled images from dataset
-	ann_df = ann_df[ann_df['annotation'].isin([val for val in ann_dict.values() if val >= 0])]
 	# round annotation labels (recall: they were made non-integers to keep unsure images separate)
 	ann_df_round = ann_df.copy()
 	ann_df_round['annotation'] = ann_df_round['annotation'].round()
+	# remove unlabeled images from dataset
+	ann_df_round = ann_df_round[ann_df_round['annotation'].isin([val for val in ann_dict.values() if val >= 0])]
+	indices = ann_df_round.index.to_numpy()
 	# save annotations
 	annotations = ann_df_round['annotation'].values
-	indices = ann_df_round.index.to_numpy()
-	print(indices)
-	print(annotations)
-	images = images[indices,]
+	images_cut = images[indices,]
 
 	# initialize the model
 	print('initialize the model')
@@ -148,7 +149,7 @@ def model_training(ann_dict, in_im_path, in_ann_path, out_ann_w_pred_path, out_m
 
 	# train model: saves the trained model to out_model_path
 	print('train the model')
-	train_model(model, images, annotations, out_model_path, train_frac, model_specs['batch_size'], n_epochs)
+	train_model(model, images_cut, annotations, out_model_path, train_frac, model_specs['batch_size'], n_epochs)
 
 	# run model; saves the predictions to out_ann_w_pred_path
 	batch_size_inference = 2048
@@ -194,7 +195,7 @@ def train_model(model, images, annotations, out_model_path, train_frac=0.7, batc
 	criterion = nn.CrossEntropyLoss()
 	optimizer = Adam(model.parameters(), lr=1e-3)
 
-	print('loss df')
+	print('making loss df')
 	# initialize loss df
 	loss_df = pd.DataFrame(columns=['running loss', 'validation loss'])
 	# Training loops
@@ -256,17 +257,19 @@ def evaluate_model(model, dataloader, criterion, device):
 # runs the model and saves the annotations df to include prediction scores
 def run_model(ann_dict, model, images, ann_df, out_ann_w_pred_path, batch_size_inference=2048):
 	predictions, features = generate_predictions_and_features(model,images,batch_size_inference)
-	
+
 	# make dataframe for outputs
-	output_pd_cols = [key + ' output' for key, value in ann_dict.items() if value > -1]
 	output_pd = pd.DataFrame(index = np.arange(images.shape[0]))
-	for i, col in enumerate(output_pd_cols):
-		output_pd[col] = predictions[:,i]
-	
+	i = 0 # counter
+	for key in ann_dict:
+		if ann_dict[key] in np.round(ann_df['annotation'].values) and ann_dict[key] >= 0:
+			output_pd[key + ' output'] = predictions[:,i]
+			i += 1
+
 	# add it to ann_df
 	ann_df = ann_df.filter(regex='^(?!.*output).*$', axis=1) # drop any output columns currently there
 	ann_w_pred_df = ann_df.merge(output_pd,left_index=True,right_index=True) # add in new outputs
-	ann_w_pred_df = ann_w_pred_df.sort_values(output_pd_cols[1],ascending=False) # sort by parasite predictions
+	ann_w_pred_df = ann_w_pred_df.sort_values('parasite output',ascending=False) # sort by parasite predictions
 
 	# save
 	ann_w_pred_df.to_csv(out_ann_w_pred_path)
@@ -352,7 +355,7 @@ def differentiator_classifier_wrapper(strat_name, uns_label, combine_dict_diff, 
 	# train classifier 1
 	cl_ann_w_pred_path = data_dir_base + '/' + strat_name + '/ann_with_predictions_cl.csv'
 	cl_model_perf_path = data_dir_base + '/' + strat_name + '/model_perf_cl.pt'
-	model_training(ann_dict, cl_images_path, cl_ann_s_1a_path, cl_ann_w_pred_path, cl_model_perf_path, model_spec)
+	model_training(ann_dict, cl_images_path, cl_ann_path, cl_ann_w_pred_path, cl_model_perf_path, model_spec)
 
 
 # SET-UP
@@ -384,46 +387,55 @@ change_annotation_value(ann_dict, unsure_ann_path, 2, 0.8) # parasite
 change_annotation_value(ann_dict, unsure_ann_path, 2, 0.2) # non-parasite
 change_annotation_value(ann_dict, unsure_ann_path, 2, -0.8) # unlabeled
 
-# # SANITY CHECK; TODO: remove
+'''
+# SANITY CHECK; TODO: remove
 
-# # set up
-# # try on 9K images from patient_combined_images/ann; get 3K of each class
-# ann_path_sanity = data_dir + '/patient_combined_ann.csv'
-# ann_df_sanity = pd.read_csv(ann_path_sanity, index_col='index')
-# im_path_sanity = data_dir + '/patient_combined_images.npy'
-# im_sanity = np.load(im_path_sanity)
+# set up
+# try on 9K images from patient_combined_images/ann; get 3K of each class
+ann_path_sanity = data_dir + '/patient_combined_ann.csv'
+ann_df_sanity = pd.read_csv(ann_path_sanity, index_col='index')
+im_path_sanity = data_dir + '/patient_combined_images.npy'
+im_sanity = np.load(im_path_sanity)
 
-# # Group the DataFrame by 'annotation' column
-# grouped = ann_df_sanity.groupby('annotation')
+# Group the DataFrame by 'annotation' column
+grouped = ann_df_sanity.groupby('annotation')
 
-# # List to store the indices
-# indices = []
+# List to store the indices
+indices = []
 
-# # Retrieve 3000 random indices for each unique element
-# for key, group in grouped:
-# 	if key >= 0:
-# 	    unique_element_indices = group.index[:3000].tolist()
-# 	    indices.extend(unique_element_indices)
+# Retrieve 3000 random indices for each unique element
+for key, group in grouped:
+	if key >= 0:
+	    unique_element_indices = group.index[:10].tolist()
+	    ims = im_sanity[unique_element_indices,]
+	    np.save(data_dir_base + '/sanity/' + str(key) + '_im.npy', ims)
+	    anns = ann_df_sanity.loc[unique_element_indices,:]
+	    anns = anns['annotation'].values.squeeze()
+	    anns = pd.DataFrame({'annotation': anns})
+	    anns.index.name = 'index'
+	    anns.to_csv(data_dir_base + '/sanity/' + str(key) + '_ann.csv')
 
-# print(indices)
-# ann_df_sanity = ann_df_sanity.loc[indices,:]
-# print(ann_df_sanity)
-# ann_df_sanity = ann_df_sanity['annotation'].values.squeeze()
-# ann_df_sanity = pd.DataFrame({'annotation':ann_df_sanity})
-# ann_df_sanity.index.name = 'index'
-# im_sanity = im_sanity[indices,]
+	    indices.extend(unique_element_indices)
 
-# print(ann_df_sanity)
+print(indices)
+ann_df_sanity = ann_df_sanity.loc[indices,:]
+print(ann_df_sanity)
+ann_df_sanity = ann_df_sanity['annotation'].values.squeeze()
+ann_df_sanity = pd.DataFrame({'annotation':ann_df_sanity})
+ann_df_sanity.index.name = 'index'
+im_sanity = im_sanity[indices,]
 
-# combined_ann_path = data_dir_base + '/sanity/combined_ann.csv'
-# combined_image_path = data_dir_base + '/sanity/combined_im.npy'
-# ann_df_sanity.to_csv(combined_ann_path)
-# np.save(combined_image_path, im_sanity)
+print(ann_df_sanity)
+
+combined_ann_path = data_dir_base + '/sanity/combined_ann.csv'
+combined_image_path = data_dir_base + '/sanity/combined_im.npy'
+ann_df_sanity.to_csv(combined_ann_path)
+np.save(combined_image_path, im_sanity)
 
 # cl_san_ann_w_pred_path = data_dir_base + '/sanity/ann_with_predictions.csv'
 # cl_san_model_path = data_dir_base + '/sanity/model_perf.pt'
 # model_training(ann_dict, combined_image_path, combined_ann_path, cl_san_ann_w_pred_path, cl_san_model_path, model_spec1)
-
+'''
 
 # FIRST CLASSIFIERS
 print('first classifiers!')
@@ -436,7 +448,7 @@ model_training(ann_dict, combined_image_path, combined_ann_path, cl_sa_ann_w_pre
 # SB: classifier run on all pos/neg images (not unsure)
 cl_sb_ann_w_pred_path = data_dir_base + '/s_b/ann_with_predictions.csv'
 cl_sb_model_path = data_dir_base + '/s_b/model_perf.pt'
-model_training(ann_dict, pos_neg_image_path, pos_neg_ann_path, cl_sa_ann_w_pred_path, cl_sa_model_path, model_spec1)
+model_training(ann_dict, pos_neg_image_path, pos_neg_ann_path, cl_sb_ann_w_pred_path, cl_sb_model_path, model_spec1)
 
 # "WRONG" PREDICTIONS BY ANNOTATION
 print('get wrong predictions!')
@@ -452,6 +464,7 @@ isolate_wrong_predictions(ann_dict, 'parasite', pos_neg_image_path, cl_sb_ann_w_
 # saves to data_dir_base + ‘/s_b/combined_images_non-parasite_wrong.npy’ and data_dir_base + ‘/s_b/combined_ann_non-parasite_wrong.csv'
 isolate_wrong_predictions(ann_dict, 'non-parasite', pos_neg_image_path, cl_sb_ann_w_pred_path)
 
+
 # START STRATEGIES 1-3: differentiator pipelines
 # S1: differentiator uses unsure labeled as parasite and wrong non-parasite
 # S1.A: using "wrong" as defined by classifier A
@@ -464,10 +477,11 @@ combine_dict_diff[data_dir_base + '/s_a/combined_images_non-parasite_wrong.npy']
 
 # datasets to combine for classifier 1a: note that the relabeling hasn't actually happened yet!
 combine_dict_cl = {}
-combine_dict_cl[data_dir + '/combined_images_parasite_and_non-parasite.npy'] = data_dir + '/combined_ann_parasite_and_non-parasite.npy'
+combine_dict_cl[data_dir + '/combined_images_parasite_and_non-parasite.npy'] = data_dir + '/combined_ann_parasite_and_non-parasite.csv'
 combine_dict_cl[data_dir + '/combined_images_unsure.npy'] = data_dir_base + '/s_1a/unsure_relabeled_thresh_0.9.csv'
 
 differentiator_classifier_wrapper('s_1a', 0.8, combine_dict_diff, combine_dict_cl, model_spec1)
+print('hi')
 
 # S1.B: using "wrong" as defined by classifier B
 print('S1.B')
@@ -479,7 +493,7 @@ combine_dict_diff[data_dir_base + '/s_b/combined_images_non-parasite_wrong.npy']
 
 # datasets to combine for classifier 1b: note that the relabeling hasn't actually happened yet!
 combine_dict_cl = {}
-combine_dict_cl[data_dir + '/combined_images_parasite_and_non-parasite.npy'] = data_dir + '/combined_ann_parasite_and_non-parasite.npy'
+combine_dict_cl[data_dir + '/combined_images_parasite_and_non-parasite.npy'] = data_dir + '/combined_ann_parasite_and_non-parasite.csv'
 combine_dict_cl[data_dir + '/combined_images_unsure.npy'] = data_dir_base + '/s_1b/unsure_relabeled_thresh_0.9.csv'
 
 differentiator_classifier_wrapper('s_1b', 0.8, combine_dict_diff, combine_dict_cl, model_spec1)
@@ -496,7 +510,7 @@ combine_dict_diff[data_dir_base + '/s_a/combined_images_parasite_wrong.npy'] = d
 
 # datasets to combine for classifier 2a: note that the relabeling hasn't actually happened yet!
 combine_dict_cl = {}
-combine_dict_cl[data_dir + '/combined_images_parasite_and_non-parasite.npy'] = data_dir + '/combined_ann_parasite_and_non-parasite.npy'
+combine_dict_cl[data_dir + '/combined_images_parasite_and_non-parasite.npy'] = data_dir + '/combined_ann_parasite_and_non-parasite.csv'
 combine_dict_cl[data_dir + '/combined_images_unsure.npy'] = data_dir_base + '/s_2a/unsure_relabeled_thresh_0.9.csv'
 
 differentiator_classifier_wrapper('s_2a', 0.8, combine_dict_diff, combine_dict_cl, model_spec1)
@@ -512,7 +526,7 @@ combine_dict_diff[data_dir_base + '/s_b/combined_images_parasite_wrong.npy'] = d
 
 # datasets to combine for classifier 2b: note that the relabeling hasn't actually happened yet!
 combine_dict_cl = {}
-combine_dict_cl[data_dir + '/combined_images_parasite_and_non-parasite.npy'] = data_dir + '/combined_ann_parasite_and_non-parasite.npy'
+combine_dict_cl[data_dir + '/combined_images_parasite_and_non-parasite.npy'] = data_dir + '/combined_ann_parasite_and_non-parasite.csv'
 combine_dict_cl[data_dir + '/combined_images_unsure.npy'] = data_dir_base + '/s_2b/unsure_relabeled_thresh_0.9.csv'
 
 differentiator_classifier_wrapper('s_2b', 0.8, combine_dict_diff, combine_dict_cl, model_spec1)
@@ -529,10 +543,10 @@ combine_dict_diff[data_dir_base + '/s_a/combined_images_parasite_wrong.npy'] = d
 
 # datasets to combine for classifier 3a: note that the relabeling hasn't actually happened yet!
 combine_dict_cl = {}
-combine_dict_cl[data_dir + '/combined_images_parasite_and_non-parasite.npy'] = data_dir + '/combined_ann_parasite_and_non-parasite.npy'
+combine_dict_cl[data_dir + '/combined_images_parasite_and_non-parasite.npy'] = data_dir + '/combined_ann_parasite_and_non-parasite.csv'
 combine_dict_cl[data_dir + '/combined_images_unsure.npy'] = data_dir_base + '/s_3a/unsure_relabeled_thresh_0.9.csv'
 
-differentiator_classifier_wrapper('s_3a', 0.8, combine_dict_diff, combine_dict_cl, model_spec1)
+differentiator_classifier_wrapper('s_3a', -0.8, combine_dict_diff, combine_dict_cl, model_spec1)
 
 # S3.B: using "wrong" as defined by classifier B
 print('S3.B')
@@ -545,9 +559,9 @@ combine_dict_diff[data_dir_base + '/s_b/combined_images_parasite_wrong.npy'] = d
 
 # datasets to combine for classifier 3b: note that the relabeling hasn't actually happened yet!
 combine_dict_cl = {}
-combine_dict_cl[data_dir + '/combined_images_parasite_and_non-parasite.npy'] = data_dir + '/combined_ann_parasite_and_non-parasite.npy'
+combine_dict_cl[data_dir + '/combined_images_parasite_and_non-parasite.npy'] = data_dir + '/combined_ann_parasite_and_non-parasite.csv'
 combine_dict_cl[data_dir + '/combined_images_unsure.npy'] = data_dir_base + '/s_3b/unsure_relabeled_thresh_0.9.csv'
 
-differentiator_classifier_wrapper('s_3b', 0.8, combine_dict_diff, combine_dict_cl, model_spec1)
+differentiator_classifier_wrapper('s_3b', -0.8, combine_dict_diff, combine_dict_cl, model_spec1)
 
 torch.cuda.empty_cache() # TODO: not sure

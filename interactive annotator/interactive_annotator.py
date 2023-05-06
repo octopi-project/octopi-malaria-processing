@@ -903,7 +903,7 @@ class DataHandler(QObject):
     def load_annotations(self,path):
         # load the annotation
         if self.data_pd is not None:
-            annotation_pd = pd.read_csv(path,index_col='index')
+            annotation_pd = pd.read_csv(path,index_col='index').round()
             self.data_pd = self.data_pd.drop(columns=['annotation'])
             self.data_pd = self.data_pd.merge(annotation_pd,left_index=True, right_index=True, how='outer')
             self.signal_populate_page0.emit() # update the display
