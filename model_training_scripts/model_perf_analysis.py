@@ -56,9 +56,11 @@ perf_df['FNR'] = perf_df['FN'] / pos_num
 
 # precision, or PPV (# TP / # pred pos)
 perf_df['PPV'] = np.divide(perf_df['TP'], perf_df['TP'] + perf_df['FP'], where = perf_df['TP'] + perf_df['FP'] != 0)
+perf_df['PPV'].fillna(np.inf)
 
 # NPV (# TN / # pred neg)
 perf_df['NPV'] = np.divide((perf_df['TN']), (perf_df['TN'] + perf_df['FN']), where = (perf_df['TN'] + perf_df['FN']) != 0)
+perf_df['NPV'].fillna(np.inf)
 
 # false discovery rate, FDR (# FP / # pred pos)
 perf_df['FDR'] = np.subtract(1, perf_df['PPV'], where = pd.notnull(perf_df['PPV']))
@@ -68,7 +70,6 @@ perf_df['FOR'] = np.subtract(1, perf_df['NPV'], where = pd.notnull(perf_df['NPV'
 
 # F1 score (when both false pos and neg are bad)
 perf_df['F1'] = np.divide((2.0 * perf_df['PPV'] * perf_df['TPR']), (perf_df['PPV'] + perf_df['TPR']), where = (perf_df['TP'] != 0) & (perf_df['PPV'] is not None))
-print(perf_df)
 
 # positive likelihood ratio (TPR / FPR)
 perf_df['LR+'] = np.divide(perf_df['TPR'], perf_df['FPR'], where = perf_df['FPR'] != 0)
@@ -76,12 +77,19 @@ perf_df['LR+'] = np.divide(perf_df['TPR'], perf_df['FPR'], where = perf_df['FPR'
 # negative likelihood ratio (FNR / TNR)
 perf_df['LR-'] = np.divide(perf_df['FNR'], perf_df['TNR'], where = perf_df['TNR'] != 0)
 
+print(perf_df)
+
 # Matthews correlation coefficient, MCC (see wiki link)
-# (TP*TN-FP*FN)/((TP+FP)(TP+FN)(TN+FP)(TN+FN))
+# (TP*TN-FP*FN)/sqrt((TP+FP)(TP+FN)(TN+FP)(TN+FN))
 # https://en.wikipedia.org/wiki/Phi_coefficient
 # TODO: look into what this is
-perf_df['MCC'] = np.divide(perf_df['TP']*perf_df['TN'] - perf_df['FP']*perf_df['FN'],(np.sqrt((perf_df['TP']+perf_df['FP'])*(perf_df['TP']+perf_df['FN'])*(perf_df['TN']+perf_df['FP'])*(perf_df['TN']+perf_df['FN'])), where = (perf_df['TP']+perf_df['FP'])*(perf_df['TP']+perf_df['FN'])*(perf_df['TN']+perf_df['FP'])*(perf_df['TN']+perf_df['FN'])
- != 0)
+for i in range(len(perf_df['TN'])):
+	num = perf_df.loc[i,'TP']*perf_df.loc[i,'TN'] - perf_df.loc[i,'FP']*perf_df.loc[i,'FN']
+	den = (pos_num*neg_num*(perf_df['TP']+perf_df['FP'])*(perf_df['TN']+perf_df['FN'])).sqrt()
+	print(num)
+	print(den)
+
+perf_df['MCC'] = np.divide(perf_df['TP']*perf_df['TN'] - perf_df['FP']*perf_df['FN'], np.sqrt(pos_num*neg_num*(perf_df['TP']+perf_df['FP'])*(perf_df['TN']+perf_df['FN'])), where=(perf_df['TN']+perf_df['FN'] != 0) & (perf_df['TP']+perf_df['FP'] != 0))
 
 # Fowlkes-Mallows index, FM (see wiki link)
 # sqrt(PPV*TPR)
