@@ -19,7 +19,7 @@ neg_num = (ann_w_pred_df['annotation'] == 0).sum()
 pos_num = (ann_w_pred_df['annotation'] == 1).sum()
 
 # TN TP FN FP counts
-perf_columns = ['thresh', 'TP', 'TN', 'FP', 'FN'] # add more cols
+perf_columns = ['thresh', 'TP', 'TN', 'FP', 'FN', 'predicted pos', 'predicted neg'] # add more cols
 perf_df = pd.DataFrame(columns=perf_columns)
 
 for i in range(len(thresh_vals)):
@@ -31,8 +31,10 @@ for i in range(len(thresh_vals)):
     tn = float(len(ann_w_pred_df[cond_neg & ~cond_pred_pos]))
     fp = float(len(ann_w_pred_df[cond_neg & cond_pred_pos]))
     fn = float(len(ann_w_pred_df[cond_pos & ~cond_pred_pos]))
+    pred_pos = tp + fp
+    pred_neg = tn + fn
 
-    perf_df.loc[i, perf_columns] = [thresh_vals[i],tp,tn,fp,fn]
+    perf_df.loc[i, perf_columns] = [thresh_vals[i],tp,tn,fp,fn,pred_pos,pred_neg]
     print('For threshold ' + str(round(thresh_vals[i],2)) + ': TP = ' + str(round(tp,2)) + ', TN = ' + str(round(tn,2)) + ', FP = ' + str(round(fp,2)) + ', FN = ' + str(round(fn,2)))
 
 c = len(ann_w_pred_df['annotation']) # total number of images
@@ -49,53 +51,62 @@ perf_df['TPR'] = (perf_df['TP']) / pos_num
 perf_df['TNR'] = perf_df['TN'] / neg_num
 
 # false positive rate, FPR (# FP / # neg)
-perf_df['FPR'] = 1 - perf_df['TNR']
+perf_df['FPR'] = perf_df['FP'] / neg_num
 
 # false negative rate, FNR, or miss rate (# FN / # pos)
 perf_df['FNR'] = perf_df['FN'] / pos_num
 
 # precision, or PPV (# TP / # pred pos)
-perf_df['PPV'] = np.divide(perf_df['TP'], perf_df['TP'] + perf_df['FP'], where = perf_df['TP'] + perf_df['FP'] != 0)
-perf_df['PPV'].fillna(np.inf)
+ppv_mask = perf_df['predicted pos'] != 0
+perf_df.loc[ppv_mask,'PPV'] = perf_df.loc[ppv_mask,'TP'] / perf_df.loc[ppv_mask,'predicted pos']
+perf_df.loc[~ppv_mask,'PPV'] = np.inf
 
 # NPV (# TN / # pred neg)
-perf_df['NPV'] = np.divide((perf_df['TN']), (perf_df['TN'] + perf_df['FN']), where = (perf_df['TN'] + perf_df['FN']) != 0)
-perf_df['NPV'].fillna(np.inf)
+npv_mask = perf_df['predicted neg'] != 0
+perf_df.loc[npv_mask,'NPV'] = perf_df.loc[npv_mask,'TN'] / perf_df.loc[npv_mask,'predicted neg']
+perf_df.loc[~npv_mask,'NPV'] = np.inf
 
 # false discovery rate, FDR (# FP / # pred pos)
-perf_df['FDR'] = np.subtract(1, perf_df['PPV'], where = pd.notnull(perf_df['PPV']))
+fdr_mask = perf_df['predicted pos'] != 0
+perf_df.loc[fdr_mask,'FDR'] = perf_df.loc[fdr_mask,'FP'] / perf_df.loc[fdr_mask,'predicted pos']
+perf_df.loc[~fdr_mask,'FDR'] = np.inf
 
-# false omission rate, FOR (# FN / # 
-perf_df['FOR'] = np.subtract(1, perf_df['NPV'], where = pd.notnull(perf_df['NPV']))
+# false omission rate, FOR (# FN / # pred neg)
+for_mask = perf_df['predicted neg'] != 0
+perf_df.loc[for_mask,'FOR'] = perf_df.loc[for_mask,'FN'] / perf_df.loc[for_mask,'predicted neg']
+perf_df.loc[~for_mask,'FOR'] = np.inf
 
-# F1 score (when both false pos and neg are bad)
-perf_df['F1'] = np.divide((2.0 * perf_df['PPV'] * perf_df['TPR']), (perf_df['PPV'] + perf_df['TPR']), where = (perf_df['TP'] != 0) & (perf_df['PPV'] is not None))
+# F1 score, when both false pos and neg are bad (2 * # TP / 2 * # TP + # FP + # FN)
+f1_mask = 2*perf_df['TP'] + perf_df['FP'] + perf_df['FN'] != 0
+perf_df.loc[f1_mask,'F1'] = 2 * perf_df.loc[f1_mask,'TP'] / (2 * perf_df.loc[f1_mask,'TP'] + perf_df.loc[f1_mask,'FP'] + perf_df.loc[f1_mask,'FN'])
+perf_df.loc[~f1_mask,'F1'] = np.inf
 
 # positive likelihood ratio (TPR / FPR)
-perf_df['LR+'] = np.divide(perf_df['TPR'], perf_df['FPR'], where = perf_df['FPR'] != 0)
+lrp_mask = perf_df['FPR'] != 0
+perf_df.loc[lrp_mask,'LR+'] = perf_df.loc[lrp_mask,'TPR'] / perf_df.loc[lrp_mask,'FPR']
+perf_df.loc[~lrp_mask,'LR+'] = np.inf
 
 # negative likelihood ratio (FNR / TNR)
-perf_df['LR-'] = np.divide(perf_df['FNR'], perf_df['TNR'], where = perf_df['TNR'] != 0)
-
-print(perf_df)
+lrn_mask = perf_df['TNR'] != 0
+perf_df.loc[lrn_mask,'LR-'] = perf_df.loc[lrn_mask,'FNR'] / perf_df.loc[lrn_mask,'TNR']
+perf_df.loc[~lrn_mask,'LR-'] = np.inf
 
 # Matthews correlation coefficient, MCC (see wiki link)
 # (TP*TN-FP*FN)/sqrt((TP+FP)(TP+FN)(TN+FP)(TN+FN))
 # https://en.wikipedia.org/wiki/Phi_coefficient
 # TODO: look into what this is
-for i in range(len(perf_df['TN'])):
-	num = perf_df.loc[i,'TP']*perf_df.loc[i,'TN'] - perf_df.loc[i,'FP']*perf_df.loc[i,'FN']
-	den = (pos_num*neg_num*(perf_df['TP']+perf_df['FP'])*(perf_df['TN']+perf_df['FN'])).sqrt()
-	print(num)
-	print(den)
-
-perf_df['MCC'] = np.divide(perf_df['TP']*perf_df['TN'] - perf_df['FP']*perf_df['FN'], np.sqrt(pos_num*neg_num*(perf_df['TP']+perf_df['FP'])*(perf_df['TN']+perf_df['FN'])), where=(perf_df['TN']+perf_df['FN'] != 0) & (perf_df['TP']+perf_df['FP'] != 0))
+mcc_mask = (perf_df['predicted neg'] != 0) | (perf_df['predicted pos'] != 0)
+perf_df.loc[mcc_mask,'MCC'] = perf_df.loc[mcc_mask,'TP']*perf_df.loc[mcc_mask,'TN'] - perf_df.loc[mcc_mask,'FP']*perf_df.loc[mcc_mask,'FN']
+perf_df.loc[mcc_mask,'MCC'] = perf_df.loc[mcc_mask,'MCC'] / np.sqrt(perf_df.loc[mcc_mask,'predicted pos']*perf_df.loc[mcc_mask,'predicted neg']*(perf_df.loc[mcc_mask,'TP']+perf_df.loc[mcc_mask,'FN'])*(perf_df.loc[mcc_mask,'TN']+perf_df.loc[mcc_mask,'FP']))
+perf_df.loc[~mcc_mask,'MCC'] = np.inf
 
 # Fowlkes-Mallows index, FM (see wiki link)
 # sqrt(PPV*TPR)
 # https://en.wikipedia.org/wiki/Fowlkes%E2%80%93Mallows_index
 # TODO: look into what this is
-perf_df['FM'] = np.sqrt(perf_df['PPV']*perf_df['TPR'])
+fm_mask = perf_df['predicted pos'] != 0
+perf_df.loc[fm_mask,'FM'] = np.sqrt(perf_df.loc[fm_mask,'PPV']*perf_df.loc[fm_mask,'TPR'])
+perf_df.loc[~fm_mask,'FM'] = np.inf
 
 # Youden's J statistic (see wiki link)
 # TPR + TNR - 1
@@ -105,8 +116,10 @@ perf_df['J'] = perf_df['TPR'] + perf_df['TNR'] - 1
 
 # Diagnostic odds ratio, DOR (LR+/LR-)
 # https://en.wikipedia.org/wiki/Diagnostic_odds_ratio
-# TODO: look into what this islr
-perf_df['DOR'] = perf_df['LR+']/perf_df['LR-']
+# TODO: look into what this is
+dor_mask = (perf_df['FPR'] != 0) & (perf_df['TNR'] != 0)
+perf_df.loc[dor_mask,'DOR'] = perf_df.loc[dor_mask,'LR+'] / perf_df.loc[dor_mask,'LR-']
+perf_df.loc[~dor_mask,'DOR'] = np.inf
 
 print(perf_df)
 
