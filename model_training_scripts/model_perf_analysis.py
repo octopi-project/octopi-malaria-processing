@@ -4,8 +4,8 @@ import os
 
 # GLOBAL VARIABLES
 
-data_dir = data_dir = '/media/rinni/Extreme SSD/Rinni/to-combine/s_a/'
-ann_w_pred_path = '/ann_with_predictions.csv'
+data_dir = data_dir = '/media/rinni/Extreme SSD/Rinni/to-combine/s_3b/'
+ann_w_pred_path = '/ann_with_predictions_cl.csv'
 relabeled_ann = True # make this the ifdef thing
 
 ann_dict = {'non-parasite':0, 'parasite':1, 'unsure':2, 'unlabeled':-1}
@@ -95,9 +95,9 @@ perf_df.loc[~lrn_mask,'LR-'] = np.inf
 # (TP*TN-FP*FN)/sqrt((TP+FP)(TP+FN)(TN+FP)(TN+FN))
 # https://en.wikipedia.org/wiki/Phi_coefficient
 # TODO: look into what this is
-mcc_mask = (perf_df['predicted neg'] != 0) | (perf_df['predicted pos'] != 0)
+mcc_mask = (perf_df['predicted neg'] != 0) & (perf_df['predicted pos'] != 0)
 perf_df.loc[mcc_mask,'MCC'] = perf_df.loc[mcc_mask,'TP']*perf_df.loc[mcc_mask,'TN'] - perf_df.loc[mcc_mask,'FP']*perf_df.loc[mcc_mask,'FN']
-perf_df.loc[mcc_mask,'MCC'] = perf_df.loc[mcc_mask,'MCC'] / np.sqrt(perf_df.loc[mcc_mask,'predicted pos']*perf_df.loc[mcc_mask,'predicted neg']*(perf_df.loc[mcc_mask,'TP']+perf_df.loc[mcc_mask,'FN'])*(perf_df.loc[mcc_mask,'TN']+perf_df.loc[mcc_mask,'FP']))
+perf_df.loc[mcc_mask,'MCC'] = perf_df.loc[mcc_mask,'MCC'] / (perf_df.loc[mcc_mask,'predicted pos']*perf_df.loc[mcc_mask,'predicted neg']*(perf_df.loc[mcc_mask,'TP']+perf_df.loc[mcc_mask,'FN'])*(perf_df.loc[mcc_mask,'TN']+perf_df.loc[mcc_mask,'FP'])).fillna(1).apply(np.sqrt)
 perf_df.loc[~mcc_mask,'MCC'] = np.inf
 
 # Fowlkes-Mallows index, FM (see wiki link)
@@ -105,7 +105,7 @@ perf_df.loc[~mcc_mask,'MCC'] = np.inf
 # https://en.wikipedia.org/wiki/Fowlkes%E2%80%93Mallows_index
 # TODO: look into what this is
 fm_mask = perf_df['predicted pos'] != 0
-perf_df.loc[fm_mask,'FM'] = np.sqrt(perf_df.loc[fm_mask,'PPV']*perf_df.loc[fm_mask,'TPR'])
+perf_df.loc[fm_mask,'FM'] = (perf_df.loc[fm_mask,'PPV']*perf_df.loc[fm_mask,'TPR']).fillna(1).apply(np.sqrt)
 perf_df.loc[~fm_mask,'FM'] = np.inf
 
 # Youden's J statistic (see wiki link)
@@ -117,12 +117,13 @@ perf_df['J'] = perf_df['TPR'] + perf_df['TNR'] - 1
 # Diagnostic odds ratio, DOR (LR+/LR-)
 # https://en.wikipedia.org/wiki/Diagnostic_odds_ratio
 # TODO: look into what this is
-dor_mask = (perf_df['FPR'] != 0) & (perf_df['TNR'] != 0)
+dor_mask = ((perf_df['FPR'] != 0) & (perf_df['TNR'] != 0)) & (perf_df['LR-'] != 0)
 perf_df.loc[dor_mask,'DOR'] = perf_df.loc[dor_mask,'LR+'] / perf_df.loc[dor_mask,'LR-']
 perf_df.loc[~dor_mask,'DOR'] = np.inf
 
-print(perf_df)
-
+perf_df.replace(np.inf, None)
+perf_df.index.name = 'index'
+perf_df.to_csv(data_dir + '/model_performance_maybe_s_3b.csv')
 '''
 if relabeled_ann:
     # do it all again

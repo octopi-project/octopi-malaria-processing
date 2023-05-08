@@ -84,6 +84,8 @@ COLOR_DICT = {0:QColor(150,200,250),1:QColor(250,200,200),2:QColor(250,250,200)}
 COLOR_DICT_PLOT = {-1:'#C8C8C8',0:'#96C8FA',1:'#FAC8C8',2:'#FAFAC8'}
 ANNOTATIONS_DICT = {'Label as non-parasite':0,'Label as parasite':1,'Label as unsure':2,'Remove Annotation':-1} 
 ANNOTATIONS_REVERSE_DICT = {-1:'not labeled',0:'non-parasite',1:'parasite',2:'unsure'} # order n classes from 0 to n-1; have no annotation as -1
+# ANNOTATIONS_DICT = {'Label as non-parasite':0,'Label as parasite':1,'Remove Annotation':-1} 
+# ANNOTATIONS_REVERSE_DICT = {-1:'not labeled',0:'non-parasite',1:'parasite'} # order n classes from 0 to n-1; have no annotation as -1
 PLOTS = ['Labels','Annotation Progress','Prediction score','Similarity',dimentionality_reduction]
 
 model_spec = {'model':'resnet18','n_channels':4,'n_filters':64,'n_classes':len(ANNOTATIONS_REVERSE_DICT)-1,'kernel_size':3,'stride':1,'padding':1}
@@ -1284,7 +1286,10 @@ class BarPlotWidget(QWidget):
 
     def _update_plot(self):
         self.axes.clear()
-        self.barh = self.axes.barh(self.labels, self.counts, label=self.labels, tick_label=['']*4, color=self.color)
+        print(self.counts)
+        print(self.labels)
+        # TODO
+        self.barh = self.axes.barh(self.labels, self.counts, label=self.labels, tick_label=['']*len(self.labels), color=self.color)
         if max(self.counts)==0:
             self.axes.set_xlim(0, 1)
         else:
