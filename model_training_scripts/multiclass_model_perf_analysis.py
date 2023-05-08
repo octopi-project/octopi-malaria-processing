@@ -121,4 +121,6 @@ dor_mask = (perf_df['FPR'] != 0) & (perf_df['TNR'] != 0)
 perf_df.loc[dor_mask,'DOR'] = perf_df.loc[dor_mask,'LR+'] / perf_df.loc[dor_mask,'LR-']
 perf_df.loc[~dor_mask,'DOR'] = np.inf
 
-print(perf_df)
+perf_df.replace(np.inf, None)
+perf_df.index.name = 'index'
+perf_df.to_csv(data_dir + '/model_performance_multiclass_' + pos_class + '_v_rest.csv')
