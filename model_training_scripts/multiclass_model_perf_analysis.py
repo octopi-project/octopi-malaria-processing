@@ -4,32 +4,32 @@ import os
 
 # GLOBAL VARIABLES
 
-data_dir = data_dir = '/media/rinni/Extreme SSD/Rinni/to-combine/s_3b/'
-ann_w_pred_path = '/ann_with_predictions_cl.csv'
-relabeled_ann = True # make this the ifdef thing
+data_dir = data_dir = '/media/rinni/Extreme SSD/Rinni/to-combine/s_a/'
+ann_w_pred_path = '/ann_with_predictions.csv'
 
-ann_dict = {'non-parasite':0, 'parasite':1, 'unsure':2, 'unlabeled':-1}
+ann_dict = {'non-parasite':0, 'parasite':1, 'unsure':2}
+pos_class = 'non-parasite'
 
-thresh_delta = 0.05
-thresh_vals = np.arange(0, 1 + thresh_delta, thresh_delta) # from 0 to 1 in 0.05 increments
+thresh_delta = 0.01
+thresh_vals = np.arange(0, 1 + thresh_delta, thresh_delta) # from 0 to 1 in 0.01 increments
 
 # P, N counts
 ann_w_pred_df = pd.read_csv(data_dir + ann_w_pred_path, index_col = 'index')
-neg_num = (ann_w_pred_df['annotation'] == 0).sum()
-pos_num = (ann_w_pred_df['annotation'] == 1).sum()
+class_nums = np.zeros(len(ann_dict))
+for i, key in enumerate(ann_dict):
+    class_nums[i] = (ann_w_pred_df['annotation'] == ann_dict[key]).sum()
 
 # TN TP FN FP counts
 perf_columns = ['thresh', 'TP', 'TN', 'FP', 'FN', 'predicted pos', 'predicted neg'] # add more cols
 perf_df = pd.DataFrame(columns=perf_columns)
 
+cond_pos = ann_w_pred_df['annotation'] == ann_dict[pos_class]
 for i in range(len(thresh_vals)):
-    cond_neg = ann_w_pred_df['annotation'] == 0
-    cond_pos = ann_w_pred_df['annotation'] == 1
-    cond_pred_pos = ann_w_pred_df['parasite output'] > thresh_vals[i]
+    cond_pred_pos = ann_w_pred_df[pos_class + ' output'] > thresh_vals[i]
     
     tp = float(len(ann_w_pred_df[cond_pos & cond_pred_pos]))
-    tn = float(len(ann_w_pred_df[cond_neg & ~cond_pred_pos]))
-    fp = float(len(ann_w_pred_df[cond_neg & cond_pred_pos]))
+    tn = float(len(ann_w_pred_df[~cond_pos & ~cond_pred_pos]))
+    fp = float(len(ann_w_pred_df[~cond_pos & cond_pred_pos]))
     fn = float(len(ann_w_pred_df[cond_pos & ~cond_pred_pos]))
     pred_pos = tp + fp
     pred_neg = tn + fn
@@ -95,9 +95,9 @@ perf_df.loc[~lrn_mask,'LR-'] = np.inf
 # (TP*TN-FP*FN)/sqrt((TP+FP)(TP+FN)(TN+FP)(TN+FN))
 # https://en.wikipedia.org/wiki/Phi_coefficient
 # TODO: look into what this is
-mcc_mask = (perf_df['predicted neg'] != 0) & (perf_df['predicted pos'] != 0)
+mcc_mask = (perf_df['predicted neg'] != 0) | (perf_df['predicted pos'] != 0)
 perf_df.loc[mcc_mask,'MCC'] = perf_df.loc[mcc_mask,'TP']*perf_df.loc[mcc_mask,'TN'] - perf_df.loc[mcc_mask,'FP']*perf_df.loc[mcc_mask,'FN']
-perf_df.loc[mcc_mask,'MCC'] = perf_df.loc[mcc_mask,'MCC'] / (perf_df.loc[mcc_mask,'predicted pos']*perf_df.loc[mcc_mask,'predicted neg']*(perf_df.loc[mcc_mask,'TP']+perf_df.loc[mcc_mask,'FN'])*(perf_df.loc[mcc_mask,'TN']+perf_df.loc[mcc_mask,'FP'])).fillna(1).apply(np.sqrt)
+perf_df.loc[mcc_mask,'MCC'] = perf_df.loc[mcc_mask,'MCC'] / np.sqrt(perf_df.loc[mcc_mask,'predicted pos']*perf_df.loc[mcc_mask,'predicted neg']*(perf_df.loc[mcc_mask,'TP']+perf_df.loc[mcc_mask,'FN'])*(perf_df.loc[mcc_mask,'TN']+perf_df.loc[mcc_mask,'FP']))
 perf_df.loc[~mcc_mask,'MCC'] = np.inf
 
 # Fowlkes-Mallows index, FM (see wiki link)
@@ -105,7 +105,7 @@ perf_df.loc[~mcc_mask,'MCC'] = np.inf
 # https://en.wikipedia.org/wiki/Fowlkes%E2%80%93Mallows_index
 # TODO: look into what this is
 fm_mask = perf_df['predicted pos'] != 0
-perf_df.loc[fm_mask,'FM'] = (perf_df.loc[fm_mask,'PPV']*perf_df.loc[fm_mask,'TPR']).fillna(1).apply(np.sqrt)
+perf_df.loc[fm_mask,'FM'] = np.sqrt(perf_df.loc[fm_mask,'PPV']*perf_df.loc[fm_mask,'TPR'])
 perf_df.loc[~fm_mask,'FM'] = np.inf
 
 # Youden's J statistic (see wiki link)
@@ -117,60 +117,8 @@ perf_df['J'] = perf_df['TPR'] + perf_df['TNR'] - 1
 # Diagnostic odds ratio, DOR (LR+/LR-)
 # https://en.wikipedia.org/wiki/Diagnostic_odds_ratio
 # TODO: look into what this is
-dor_mask = ((perf_df['FPR'] != 0) & (perf_df['TNR'] != 0)) & (perf_df['LR-'] != 0)
+dor_mask = (perf_df['FPR'] != 0) & (perf_df['TNR'] != 0)
 perf_df.loc[dor_mask,'DOR'] = perf_df.loc[dor_mask,'LR+'] / perf_df.loc[dor_mask,'LR-']
 perf_df.loc[~dor_mask,'DOR'] = np.inf
 
-perf_df.replace(np.inf, None)
-perf_df.index.name = 'index'
-perf_df.to_csv(data_dir + '/model_performance_maybe_s_3b.csv')
-'''
-if relabeled_ann:
-    # do it all again
-    ann_relabeled_path = '/unsure_relabeled_thresh_0.9.csv'
-
-    ann_relabeled_df = pd.read_csv(ann_relabeled_path, index = 'index')
-    ann_w_pred_relabeled_df = ann_w_pred_df.copy()
-    ann_w_pred_relabeled_df['annotation'] = ann_relabeled_df['annotation']
-'''
-
-""" 
-Binary classifier:
-for a given threshold, (the value t at which para > t means we predict positive) calculate:
-- a = frac of unsure labeled pos
-- b = frac of pos labeled pos
-- c = frac of neg labeled pos
-- number of pos, neg, uns: d, e, f
-- b_1 = frac of pos labeled pos in relabeled
-- c_1 = frac of neg labeled pos in relabeled
-- number of pos, neg in relabeled: d_1, e_1
-- FPR
-- TPR
-- FNR
-- TNR
-- FP
-- FN
-- TP
-- TN
-- Sensitivity
-- Specificity
-
-Ternary classifier:
-One way:
-Pick a threshold again (the value t at which para pred > t means we predict positive)
-For all other images, predict negative
-Then calculate the same things!
-Other way:
-check that link, but can do the one vs rest strategy above for all classes^!
-
-pseudocode:
-make df where rows are for each new thresh t and cols are values of interest
-define it with column names^ (thres, TN, TP, ..., specificity or something)
-begin for loop, running through thresh t
-read in csv
-get np array of predictions based on thresh t
-compare predictions to ground truth
-get TN, TP, FN, FP
-calculate all other values accordingly
-fill into df as you go 
-"""
+print(perf_df)
