@@ -13,7 +13,7 @@ for folder in folders:
         paths.append(path)
     else:
         path1 = path + '/ann_with_predictions_cl_r18_b32.csv'
-        path2 = path + '/unsure_r18_b32_relabeled_0.9.csv'
+        path2 = path + '/unsure_r18_b32_relabeled_thresh_0.9.csv'
         paths.append(path1)
         paths.append(path2)
 
