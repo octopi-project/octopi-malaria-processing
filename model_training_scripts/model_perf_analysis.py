@@ -4,27 +4,56 @@ import os
 
 # GLOBAL VARIABLES
 
-data_dir = data_dir = '/media/rinni/Extreme SSD/Rinni/to-combine/s_a/'
-ann_w_pred_path = '/ann_with_predictions.csv'
+pos_class = 'parasite'
+unsure_relabeled = True
+unsure_ignored = False
 
-ann_dict = {'non-parasite':0, 'parasite':1, 'unsure':2, 'unlabeled':-1}
+data_dir = data_dir = '../ann_with_predictions_r18_b32/s_3b'
+ann_w_pred_path = '/ann_with_predictions_cl_r18_b32.csv'
+if unsure_ignored:
+    performance_out_path = data_dir + '/model_r18_b32_performance_' + pos_class + '_v_rest_unsure_ignored.csv'
+else:
+    performance_out_path = data_dir + '/model_r18_b32_performance_' + pos_class + '_v_rest.csv'
 
-thresh_delta = 0.01 # TODO: run again (it was 0.05)
+ann_w_pred_df = pd.read_csv(data_dir + ann_w_pred_path, index_col = 'index')
+if unsure_relabeled:
+    unsure_relabeled_path = '/unsure_r18_b32_relabeled_thresh_0.9.csv'
+    unsure_df = pd.read_csv(data_dir + unsure_relabeled_path, index_col = 'index')
+    for index in unsure_df.index:
+        ann_w_pred_df.loc[index, 'annotation'] = 2
+
+# suppose the annotations have 3 labels: non-par, par, unsure
+if unsure_ignored:
+    # if I want to ignore all unsure for performance analysis:
+    ann_dict = {'non-parasite':0, 'parasite':1}
+else:
+    # if I want to include the unsure in the counts, but assume they're negative for performance analysis:
+    ann_dict = {'non-parasite':0, 'parasite':1, 'unsure':2}
+
+# BASIC COUNTS
+
+thresh_delta = 0.002
 thresh_vals = np.arange(0, 1 + thresh_delta, thresh_delta) # from 0 to 1 in 0.01 increments
 
 # P, N counts
-ann_w_pred_df = pd.read_csv(data_dir + ann_w_pred_path, index_col = 'index')
-neg_num = (ann_w_pred_df['annotation'] == 0).sum()
-pos_num = (ann_w_pred_df['annotation'] == 1).sum()
+class_nums = np.zeros(len(ann_dict))
+pos_num = 0
+neg_num = 0
+for i, key in enumerate(ann_dict):
+    class_nums[i] = (ann_w_pred_df['annotation'] == ann_dict[key]).sum()
+    if key == pos_class:
+        pos_num = class_nums[i]
+    else:
+        neg_num += class_nums[i]
 
 # TN TP FN FP counts
 perf_columns = ['thresh', 'TP', 'TN', 'FP', 'FN', 'predicted pos', 'predicted neg'] # add more cols
 perf_df = pd.DataFrame(columns=perf_columns)
 
-cond_neg = ann_w_pred_df['annotation'] == 0
-cond_pos = ann_w_pred_df['annotation'] == 1
+cond_pos = ann_w_pred_df['annotation'] == ann_dict[pos_class]
+cond_neg = np.any([(ann_w_pred_df['annotation'] == val) for val in ann_dict.values() if val != ann_dict[pos_class]],axis=0)
 for i in range(len(thresh_vals)):
-    cond_pred_pos = ann_w_pred_df['parasite output'] > thresh_vals[i]
+    cond_pred_pos = ann_w_pred_df[pos_class + ' output'] > thresh_vals[i]
     
     tp = float(len(ann_w_pred_df[cond_pos & cond_pred_pos]))
     tn = float(len(ann_w_pred_df[cond_neg & ~cond_pred_pos]))
@@ -34,11 +63,11 @@ for i in range(len(thresh_vals)):
     pred_neg = tn + fn
 
     perf_df.loc[i, perf_columns] = [thresh_vals[i],tp,tn,fp,fn,pred_pos,pred_neg]
-    print('For threshold ' + str(round(thresh_vals[i],2)) + ': TP = ' + str(round(tp,2)) + ', TN = ' + str(round(tn,2)) + ', FP = ' + str(round(fp,2)) + ', FN = ' + str(round(fn,2)))
 
 c = len(ann_w_pred_df['annotation']) # total number of images
+print(class_nums)
 
-# Performance calculations
+# PERFORMANCE CALCULATIONS
 
 # accuracy (TP + TN / all)
 perf_df['accuracy'] = (perf_df['TP'] + perf_df['TN']) / c
@@ -94,9 +123,9 @@ perf_df.loc[~lrn_mask,'LR-'] = np.inf
 # (TP*TN-FP*FN)/sqrt((TP+FP)(TP+FN)(TN+FP)(TN+FN))
 # https://en.wikipedia.org/wiki/Phi_coefficient
 # TODO: look into what this is
-mcc_mask = (perf_df['predicted neg'] != 0) | (perf_df['predicted pos'] != 0)
+mcc_mask = (perf_df['predicted neg'] != 0) & (perf_df['predicted pos'] != 0)
 perf_df.loc[mcc_mask,'MCC'] = perf_df.loc[mcc_mask,'TP']*perf_df.loc[mcc_mask,'TN'] - perf_df.loc[mcc_mask,'FP']*perf_df.loc[mcc_mask,'FN']
-perf_df.loc[mcc_mask,'MCC'] = perf_df.loc[mcc_mask,'MCC'] / np.sqrt(perf_df.loc[mcc_mask,'predicted pos']*perf_df.loc[mcc_mask,'predicted neg']*(perf_df.loc[mcc_mask,'TP']+perf_df.loc[mcc_mask,'FN'])*(perf_df.loc[mcc_mask,'TN']+perf_df.loc[mcc_mask,'FP']))
+perf_df.loc[mcc_mask,'MCC'] = perf_df.loc[mcc_mask,'MCC'] / (perf_df.loc[mcc_mask,'predicted pos']*perf_df.loc[mcc_mask,'predicted neg']*(perf_df.loc[mcc_mask,'TP']+perf_df.loc[mcc_mask,'FN'])*(perf_df.loc[mcc_mask,'TN']+perf_df.loc[mcc_mask,'FP'])).fillna(1).apply(np.sqrt)
 perf_df.loc[~mcc_mask,'MCC'] = np.inf
 
 # Fowlkes-Mallows index, FM (see wiki link)
@@ -104,7 +133,7 @@ perf_df.loc[~mcc_mask,'MCC'] = np.inf
 # https://en.wikipedia.org/wiki/Fowlkes%E2%80%93Mallows_index
 # TODO: look into what this is
 fm_mask = perf_df['predicted pos'] != 0
-perf_df.loc[fm_mask,'FM'] = np.sqrt(perf_df.loc[fm_mask,'PPV']*perf_df.loc[fm_mask,'TPR'])
+perf_df.loc[fm_mask,'FM'] = (perf_df.loc[fm_mask,'PPV']*perf_df.loc[fm_mask,'TPR']).fillna(1).apply(np.sqrt)
 perf_df.loc[~fm_mask,'FM'] = np.inf
 
 # Youden's J statistic (see wiki link)
@@ -116,8 +145,10 @@ perf_df['J'] = perf_df['TPR'] + perf_df['TNR'] - 1
 # Diagnostic odds ratio, DOR (LR+/LR-)
 # https://en.wikipedia.org/wiki/Diagnostic_odds_ratio
 # TODO: look into what this is
-dor_mask = (perf_df['FPR'] != 0) & (perf_df['TNR'] != 0)
+dor_mask = ((perf_df['FPR'] != 0) & (perf_df['TNR'] != 0)) & (perf_df['LR-'] != 0)
 perf_df.loc[dor_mask,'DOR'] = perf_df.loc[dor_mask,'LR+'] / perf_df.loc[dor_mask,'LR-']
 perf_df.loc[~dor_mask,'DOR'] = np.inf
 
-print(perf_df)
+perf_df.replace(np.inf, None)
+perf_df.index.name = 'index'
+perf_df.to_csv(performance_out_path)
