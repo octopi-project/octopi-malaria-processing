@@ -8,16 +8,16 @@ pos_class = 'parasite'
 unsure_relabeled = True
 unsure_ignored = False
 
-data_dir = data_dir = '../ann_with_predictions_r18_b32/s_3b'
-ann_w_pred_path = '/ann_with_predictions_cl_r18_b32.csv'
+data_dir = data_dir = '../ann_with_predictions_r34_b32/s_3b'
+ann_w_pred_path = '/ann_with_predictions_cl_r34_b32.csv'
 if unsure_ignored:
-    performance_out_path = data_dir + '/model_r18_b32_performance_' + pos_class + '_v_rest_unsure_ignored.csv'
+    performance_out_path = data_dir + '/model_r34_b32_performance_' + pos_class + '_v_rest_unsure_ignored.csv'
 else:
-    performance_out_path = data_dir + '/model_r18_b32_performance_' + pos_class + '_v_rest.csv'
+    performance_out_path = data_dir + '/model_r34_b32_performance_' + pos_class + '_v_rest.csv'
 
 ann_w_pred_df = pd.read_csv(data_dir + ann_w_pred_path, index_col = 'index')
 if unsure_relabeled:
-    unsure_relabeled_path = '/unsure_r18_b32_relabeled_thresh_0.9.csv'
+    unsure_relabeled_path = '/unsure_r34_b32_relabeled_thresh_0.9.csv'
     unsure_df = pd.read_csv(data_dir + unsure_relabeled_path, index_col = 'index')
     for index in unsure_df.index:
         ann_w_pred_df.loc[index, 'annotation'] = 2
