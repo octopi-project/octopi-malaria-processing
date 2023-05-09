@@ -8,7 +8,7 @@ folders = ['s_a','s_b','s_1a','s_1b','s_2a','s_2b','s_3a','s_3b']
 paths = []
 for folder in folders:
     path = data_dir + folder
-    if len(folder) == 2:
+    if len(folder) == 3:
         path += '/ann_with_predictions_r18_b32.csv'
     else:
         path += '/ann_with_predictions_cl_r18_b32.csv'
