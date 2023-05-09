@@ -9,16 +9,16 @@ paths = []
 for folder in folders:
     path = data_dir + folder
     if len(folder) == 3:
-        path += '/ann_with_predictions_r18_b32.csv'
+        path += '/ann_with_predictions_r34_b32.csv'
         paths.append(path)
     else:
-        path1 = path + '/ann_with_predictions_cl_r18_b32.csv'
-        path2 = path + '/unsure_r18_b32_relabeled_thresh_0.9.csv'
+        path1 = path + '/ann_with_predictions_cl_r34_b32.csv'
+        path2 = path + '/unsure_r34_b32_relabeled_thresh_0.9.csv'
         paths.append(path1)
         paths.append(path2)
 
 # Create the zip file and add the csv files to it
-with zipfile.ZipFile(data_dir + "/ann_with_predictions_r18_b32.zip", "w") as zip_file:
+with zipfile.ZipFile(data_dir + "/ann_with_predictions_r34_b32.zip", "w") as zip_file:
     for path in paths:
         # Get the name of the nested directory that the csv file is in
         nested_directory = os.path.split(os.path.dirname(path))[1]
