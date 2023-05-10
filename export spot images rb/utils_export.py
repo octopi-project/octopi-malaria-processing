@@ -26,31 +26,24 @@ def generate_dpc(I1,I2,use_gpu=False):
 	return I_dpc
 
 def export_spot_images_from_fov(I_fluorescence,I_dpc,spot_data,parameters,settings,gcs_settings,dir_out=None,r=30,generate_separate_images=False):
-	pass
-	# make I_dpc RGB
+	# if RGB
 	if(len(I_dpc.shape)==3):
-		# I_dpc_RGB = I_dpc
 		I_dpc = I_dpc[:,:,1]
-	else:
-		# I_dpc_RGB = np.dstack((I_dpc,I_dpc,I_dpc))
-		pass
-	# get overlay
-	# I_overlay = 0.64*I_fluorescence + 0.36*I_dpc_RGB
 	# get the full image size
 	height,width,channels = I_fluorescence.shape
-	# go through spot
+
+	# go through the spots
 	counter = 0
 	
-	for idx, entry in spot_data.iterrows():
+	for idx, entry in spot_data.iterrows(): # go through all spots in spot_data, a df
 		# get coordinate
-		i = int(entry['FOV_row'])
+		i = int(entry['FOV_row']) # i,j should be the same for all entries
 		j = int(entry['FOV_col'])
 		x = int(entry['x'])
 		y = int(entry['y'])
 		# create the arrays for cropped images
 		I_DPC_cropped = np.zeros((2*r+1,2*r+1), np.float)
 		I_fluorescence_cropped = np.zeros((2*r+1,2*r+1,3), np.float)
-		# I_overlay_cropped = np.zeros((2*r+1,2*r+1,3), np.float)
 		# identify cropping region in the full FOV 
 		x_start = max(0,x-r)
 		x_end = min(x+r,width-1)
@@ -72,24 +65,13 @@ def export_spot_images_from_fov(I_fluorescence,I_dpc,spot_data,parameters,settin
 		# combine
 		if counter == 0:
 			I = np.dstack((I_fluorescence_cropped,I_DPC_cropped))[np.newaxis,:]
-			if generate_separate_images:
-				I_DAPI = I_fluorescence_cropped[np.newaxis,:]
-				I_DPC = I_DPC_cropped[np.newaxis,:]
 		else:
 			I = np.concatenate((I,np.dstack((I_fluorescence_cropped,I_DPC_cropped))[np.newaxis,:]))
-			if generate_separate_images:
-				I_DAPI = np.concatenate((I_DAPI,I_fluorescence_cropped[np.newaxis,:]))
-				I_DPC = np.concatenate((I_DPC,I_DPC_cropped[np.newaxis,:]))
 		counter = counter + 1
 
 	if counter == 0:
 		print('no spot in this FOV')
 	else:
-		# gcs
-		if settings['save to gcs']:
-			fs = gcsfs.GCSFileSystem(project=gcs_settings['gcs_project'],token=gcs_settings['gcs_token'])
-			dir_out = settings['bucket_destination'] + '/' + settings['dataset_id'] + '/' + 'spot_images_fov'
-
 		# convert to xarray
 		# data = xr.DataArray(I,coords={'c':['B','G','R','DPC']},dims=['t','y','x','c'])
 		data = xr.DataArray(I,dims=['t','y','x','c'])
@@ -97,38 +79,8 @@ def export_spot_images_from_fov(I_fluorescence,I_dpc,spot_data,parameters,settin
 		data = data.transpose('t','c','z','y','x')
 		data = (data*255).astype('uint8')
 		ds = xr.Dataset({'spot_images':data})
-		# ds.spot_images.data = (ds.spot_images.data*255).astype('uint8')
-		if settings['save to gcs']:
-			store = fs.get_mapper(dir_out + '/' + str(i) + '_' + str(j) + '.zarr')
-		else:
-			store = dir_out + '/' + str(i) + '_' + str(j) + '.zarr'
-		ds.spot_images.encoding = {'chunks': (1,1,1,61,61)}
-		ds.to_zarr(store, mode='w')
+		np.save(dir_out + '/' + str(i) + '_' + str(j) + '.npy', ds.spot_images.values)
 
 		# save per FOV spot data for mapping
 		spot_data = spot_data[['FOV_row','FOV_col','FOV_z','x','y','r','idx']]
 		spot_data.to_csv(dir_out + '/' + str(i) + '_' + str(j) + '.csv')
-
-		if generate_separate_images:
-			
-			data = xr.DataArray(I_DAPI,dims=['t','y','x','c'])
-			data = data.expand_dims('z')
-			data = data.transpose('t','c','z','y','x')
-			data = (data*255).astype('uint8')
-			ds = xr.Dataset({'spot_images':data})
-			if settings['save to gcs']:
-				store = fs.get_mapper(dir_out + '/' + str(i) + '_' + str(j) + '_fluorescence.zarr')
-			else:
-				store = dir_out + '/' + str(i) + '_' + str(j) + '_fluorescence.zarr'
-			ds.to_zarr(store, mode='w')
-
-			data = xr.DataArray(I_DPC,dims=['t','y','x'])
-			data = data.expand_dims(('z','c'))
-			data = data.transpose('t','c','z','y','x')
-			data = (data*255).astype('uint8')
-			ds = xr.Dataset({'spot_images':data})
-			if settings['save to gcs']:
-				store = fs.get_mapper(dir_out + '/' + str(i) + '_' + str(j) + '_DPC.zarr')
-			else:
-				store = dir_out + '/' + str(i) + '_' + str(j) + '_DPC.zarr'
-			ds.to_zarr(store, mode='w')
