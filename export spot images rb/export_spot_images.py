@@ -43,8 +43,8 @@ if __name__ == '__main__':
     gcs_settings['gcs_project'] = gcs_project
     gcs_settings['gcs_token'] = gcs_token
 
-    bucket_source = 'gs://octopi-malaria-tanzania-2021-data'
-    bucket_destination = 'gs://octopi-malaria-data-processing'
+    bucket_source = 'gs://octopi-malaria-uganda-2022-data'
+    bucket_destination = 'gs://octopi-malaria-uganda-2022-data'
 
     settings = {}
     settings['export selected spots'] = export_selected_spots
@@ -103,12 +103,12 @@ if __name__ == '__main__':
                 if os.path.exists(dir_in + '/' + file_id + '.csv'):
                     mapping_fov = pd.read_csv(dir_in + '/' + file_id + '.csv', header=0,index_col=0)
                     mapping_pd = pd.concat([mapping_pd,mapping_fov])
-                if os.path.exists(dir_in + '/' + file_id + '.zarr'):
-                    ds = xr.open_zarr(dir_in + '/' + file_id + '.zarr')
+                if os.path.exists(dir_in + '/' + file_id + '.npy'):
+                    ds = np.load(dir_in + '/' + file_id + '.npy')
                     if counter == 0:
-                        data_all = ds.spot_images
+                        data_all = ds
                     else:
-                        data_all = xr.concat([data_all,ds.spot_images],dim='t')
+                        data_all = np.concatenate([data_all,ds],axis=0)
                 counter = counter + 1
         mapping_pd.reset_index(inplace=True)
         mapping_pd.rename(columns={'index':'global_index'},inplace=True)
@@ -119,11 +119,6 @@ if __name__ == '__main__':
             print("upload mapping")
             with fs.open( bucket_destination + '/' + dataset_id + '/' + 'mapping.csv', 'wb' ) as f:
               mapping_pd.to_csv(f,index=False)
-
-        # save all spot images into a zip store
-        ds_all = xr.Dataset({'spot_images':data_all})
-        with zarr.ZipStore(dataset_id + '_spot_images.zip', mode='w') as store:
-            ds_all.to_zarr(store, mode='w')
 
         if save_locally == False:
             print("upload spot images")
