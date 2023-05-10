@@ -376,10 +376,10 @@ slide_images_dict[data_dir_n + '/neg_combined_images.npy'] = data_dir_n + '/neg_
 
 combined_image_path = data_dir + '/combined_images.npy'
 combined_ann_path = data_dir + '/combined_ann.csv'
-combine_datasets(slide_images_dict, combined_image_path, combined_ann_path)
+# combine_datasets(slide_images_dict, combined_image_path, combined_ann_path)
 
 # split the combined images by class
-split_by_class(ann_dict, combined_image_path, combined_ann_path)
+# split_by_class(ann_dict, combined_image_path, combined_ann_path)
 # save combined parasite and non-parasite images
 pos_neg_dict = {}
 pos_neg_dict[data_dir + '/combined_images_non-parasite.npy'] = data_dir + '/combined_ann_non-parasite.csv'
@@ -387,12 +387,12 @@ pos_neg_dict[data_dir + '/combined_images_parasite.npy'] = data_dir + '/combined
 
 pos_neg_image_path = data_dir + '/combined_images_parasite_and_non-parasite.npy' 
 pos_neg_ann_path = data_dir + '/combined_ann_parasite_and_non-parasite.csv'
-combine_datasets(pos_neg_dict, pos_neg_image_path, pos_neg_ann_path)
+# combine_datasets(pos_neg_dict, pos_neg_image_path, pos_neg_ann_path)
 # save the unsure images, but labeled as various classes (pos, neg, unlabeled)
 unsure_ann_path = data_dir + '/combined_ann_unsure.csv'
-change_annotation_value(ann_dict, unsure_ann_path, 2, 0.8) # parasite
-change_annotation_value(ann_dict, unsure_ann_path, 2, 0.2) # non-parasite
-change_annotation_value(ann_dict, unsure_ann_path, 2, -0.8) # unlabeled
+# change_annotation_value(ann_dict, unsure_ann_path, 2, 0.8) # parasite
+# change_annotation_value(ann_dict, unsure_ann_path, 2, 0.2) # non-parasite
+# change_annotation_value(ann_dict, unsure_ann_path, 2, -0.8) # unlabeled
 
 '''
 # SANITY CHECK; TODO: remove
@@ -450,7 +450,7 @@ print('first classifiers!')
 # SA: classifier run on all images (in all 3 classes)
 cl_sa_ann_w_pred_path = data_dir_base + '/s_a/ann_with_predictions_r18_b64.csv'
 cl_sa_model_path = data_dir_base + '/s_a/model_perf_r18_b64.pt'
-model_training(ann_dict, combined_image_path, combined_ann_path, cl_sa_ann_w_pred_path, cl_sa_model_path, model_spec1)
+# model_training(ann_dict, combined_image_path, combined_ann_path, cl_sa_ann_w_pred_path, cl_sa_model_path, model_spec1)
 
 # SB: classifier run on all pos/neg images (not unsure)
 cl_sb_ann_w_pred_path = data_dir_base + '/s_b/ann_with_predictions_r18_b64.csv'
