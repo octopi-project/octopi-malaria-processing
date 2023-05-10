@@ -7,6 +7,7 @@ import torch.nn as nn
 from torch.optim import Adam
 import copy
 import time
+import sys
 
 # import utils.py from interactive_annotator
 from importlib.machinery import SourceFileLoader
@@ -25,7 +26,7 @@ data_dir_base = data_dir.split('sorted_images')[0]
 data_dir_n = '/home/rinni/Desktop/Octopi/data/neg-to-combine/'
 
 # model default paramete32
-model_spec1 = {'model_name':'resnet18','n_channels':4,'n_filters':64,'n_classes':len(ann_dict)-1,'kernel_size':3,'stride':1,'padding':1, 'batch_size':16}
+model_spec1 = {'model_name':'resnet18','n_channels':4,'n_filters':64,'n_classes':len(ann_dict)-1,'kernel_size':3,'stride':1,'padding':1, 'batch_size':64}
 
 # model_spec2 = {'model_name':'resnet34','n_channels':4,'n_filters':64,'n_classes':len(ann_dict)-1,'kernel_size':3,'stride':1,'padding':1, 'batch_size':20}
 
@@ -122,8 +123,8 @@ def isolate_wrong_predictions(ann_dict, class_key, in_im_path, in_ann_w_pred_pat
 	# save
 	if out_dir is None: # use the directory for input annotations
 		out_dir = '/'.join(in_ann_w_pred_path.split('/')[:-1]) + '/'
-	np.save(out_dir + '/combined_images_' + class_key + '_wrong_r18_b16.npy', images_w)
-	ann_df_w.to_csv(out_dir + '/combined_ann_' + class_key + '_wrong_r18_b16.csv')	
+	np.save(out_dir + '/combined_images_' + class_key + '_wrong_r18_b64.npy', images_w)
+	ann_df_w.to_csv(out_dir + '/combined_ann_' + class_key + '_wrong_r18_b64.csv')	
 
 # train model given input annotations and images; output performance??
 def model_training(ann_dict, in_im_path, in_ann_path, out_ann_w_pred_path, out_model_path, model_specs, train_frac=0.7, n_epochs=40):
@@ -166,14 +167,16 @@ def train_model(model, images, annotations, out_model_path, train_frac=0.7, batc
 	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 	model = model.to(device)
 
-	# make images 0-1 if they are not already
-	if images.dtype == np.uint8:
-		images = images.astype(np.float32)/255.0 # convert to 0-1 if uint8 input
-
 	# shuffle
 	indices = np.random.choice(len(images), len(images), replace=False)
 	data = images[indices,:,:,:]
 	label = annotations[indices]
+
+	# make images 0-1 if they are not already
+	if data.dtype == np.uint8:
+		print(sys.getsizeof(data)/(1024 ** 3))
+		data = data.astype(np.float32)/255.0 # convert to 0-1 if uint8 input
+		print(sys.getsizeof(data)/(1024 ** 3))
 
 	print('splitting with ' + str(round(train_frac,1)) + ':' + str(round(1-train_frac,1)) + ' train:test split')
 	# Split the data into train, validation, and test sets
@@ -232,7 +235,7 @@ def train_model(model, images, annotations, out_model_path, train_frac=0.7, batc
 		print("\a"); time.sleep(0.5); print("\a"); time.sleep(0.5); print("\a"); time.sleep(0.5); print("\a"); time.sleep(0.5); 
 
 
-	loss_df.to_csv(out_model_path[:out_model_path.rfind('/')] + '/loss_df_r18_b16.csv')
+	loss_df.to_csv(out_model_path[:out_model_path.rfind('/')] + '/loss_df_r18_b64.csv')
 	# training complete
 	print('saving the best model to ' + out_model_path)
 	torch.save(model_best, out_model_path)
@@ -329,7 +332,7 @@ def relabel_uns_by_diff_predictions(in_ann_w_pred_path, class_val, class_name = 
 
 	# save
 	if out_ann_path is None: # default path
-		diff_ann_relabeled_path = '/'.join(in_ann_w_pred_path.split('/')[:-1]) + '/' + class_name + '_r18_b16_relabeled_thresh_' + "{:.1f}".format(relabel_thresh) + '.csv'
+		diff_ann_relabeled_path = '/'.join(in_ann_w_pred_path.split('/')[:-1]) + '/' + class_name + '_r18_b64_relabeled_thresh_' + "{:.1f}".format(relabel_thresh) + '.csv'
 	diff_ann_df.to_csv(diff_ann_relabeled_path)
 
 # sample strat_name: s_1a
@@ -337,13 +340,13 @@ def relabel_uns_by_diff_predictions(in_ann_w_pred_path, class_val, class_name = 
 def differentiator_classifier_wrapper(strat_name, uns_label, combine_dict_diff, combine_dict_cl, model_spec = model_spec1):
 	# train differentiator
 	# combine datasets for differentiator
-	diff_images_path = data_dir_base + '/' + strat_name + '/combined_images_diff_r18_b16.npy'
-	diff_ann_path = data_dir_base + '/' + strat_name + '/combined_ann_diff_r18_b16.csv'
+	diff_images_path = data_dir_base + '/' + strat_name + '/combined_images_diff_r18_b64.npy'
+	diff_ann_path = data_dir_base + '/' + strat_name + '/combined_ann_diff_r18_b64.csv'
 	combine_datasets(combine_dict_diff, diff_images_path, diff_ann_path)
 
 	# train differentiator 1
-	diff_ann_w_pred_path = data_dir_base + '/' + strat_name + '/ann_with_predictions_diff_r18_b16.csv'
-	diff_model_perf_path = data_dir_base + '/' + strat_name + '/model_perf_diff_r18_b16.pt'
+	diff_ann_w_pred_path = data_dir_base + '/' + strat_name + '/ann_with_predictions_diff_r18_b64.csv'
+	diff_model_perf_path = data_dir_base + '/' + strat_name + '/model_perf_diff_r18_b64.pt'
 	model_training(ann_dict, diff_images_path, diff_ann_path, diff_ann_w_pred_path, diff_model_perf_path, model_spec)
 
 	# relabel unsures with differentiator 1
@@ -352,13 +355,13 @@ def differentiator_classifier_wrapper(strat_name, uns_label, combine_dict_diff, 
 
 	# train classifier 1
 	# combine datasets for classifier 1
-	cl_images_path = data_dir_base + '/' + strat_name + '/combined_images_cl_r18_b16.npy'
-	cl_ann_path = data_dir_base + '/' + strat_name + '/combined_ann_cl_r18_b16.csv'
+	cl_images_path = data_dir_base + '/' + strat_name + '/combined_images_cl_r18_b64.npy'
+	cl_ann_path = data_dir_base + '/' + strat_name + '/combined_ann_cl_r18_b64.csv'
 	combine_datasets(combine_dict_cl, cl_images_path, cl_ann_path)
 
 	# train classifier 1
-	cl_ann_w_pred_path = data_dir_base + '/' + strat_name + '/ann_with_predictions_cl_r18_b16.csv'
-	cl_model_perf_path = data_dir_base + '/' + strat_name + '/model_perf_cl_r18_b16.pt'
+	cl_ann_w_pred_path = data_dir_base + '/' + strat_name + '/ann_with_predictions_cl_r18_b64.csv'
+	cl_model_perf_path = data_dir_base + '/' + strat_name + '/model_perf_cl_r18_b64.pt'
 	model_training(ann_dict, cl_images_path, cl_ann_path, cl_ann_w_pred_path, cl_model_perf_path, model_spec)
 
 
@@ -445,13 +448,13 @@ np.save(combined_image_path, im_sanity)
 print('first classifiers!')
 
 # SA: classifier run on all images (in all 3 classes)
-cl_sa_ann_w_pred_path = data_dir_base + '/s_a/ann_with_predictions_r18_b16.csv'
-cl_sa_model_path = data_dir_base + '/s_a/model_perf_r18_b16.pt'
+cl_sa_ann_w_pred_path = data_dir_base + '/s_a/ann_with_predictions_r18_b64.csv'
+cl_sa_model_path = data_dir_base + '/s_a/model_perf_r18_b64.pt'
 model_training(ann_dict, combined_image_path, combined_ann_path, cl_sa_ann_w_pred_path, cl_sa_model_path, model_spec1)
 
 # SB: classifier run on all pos/neg images (not unsure)
-cl_sb_ann_w_pred_path = data_dir_base + '/s_b/ann_with_predictions_r18_b16.csv'
-cl_sb_model_path = data_dir_base + '/s_b/model_perf_r18_b16.pt'
+cl_sb_ann_w_pred_path = data_dir_base + '/s_b/ann_with_predictions_r18_b64.csv'
+cl_sb_model_path = data_dir_base + '/s_b/model_perf_r18_b64.pt'
 model_training(ann_dict, pos_neg_image_path, pos_neg_ann_path, cl_sb_ann_w_pred_path, cl_sb_model_path, model_spec1)
 
 # "WRONG" PREDICTIONS BY ANNOTATION
@@ -477,12 +480,12 @@ print('S1.A')
 # datasets to combine for differentiator 1a
 combine_dict_diff = {}
 combine_dict_diff[data_dir + '/combined_images_unsure.npy'] = data_dir + '/combined_ann_unsure_as_parasite.csv'
-combine_dict_diff[data_dir_base + '/s_a/combined_images_non-parasite_wrong_r18_b16.npy'] = data_dir_base + '/s_a/combined_ann_non-parasite_wrong_r18_b16.csv'
+combine_dict_diff[data_dir_base + '/s_a/combined_images_non-parasite_wrong_r18_b64.npy'] = data_dir_base + '/s_a/combined_ann_non-parasite_wrong_r18_b64.csv'
 
 # datasets to combine for classifier 1a: note that the relabeling hasn't actually happened yet!
 combine_dict_cl = {}
 combine_dict_cl[data_dir + '/combined_images_parasite_and_non-parasite.npy'] = data_dir + '/combined_ann_parasite_and_non-parasite.csv'
-combine_dict_cl[data_dir + '/combined_images_unsure.npy'] = data_dir_base + '/s_1a/unsure_r18_b16_relabeled_thresh_0.9.csv'
+combine_dict_cl[data_dir + '/combined_images_unsure.npy'] = data_dir_base + '/s_1a/unsure_r18_b64_relabeled_thresh_0.9.csv'
 
 differentiator_classifier_wrapper('s_1a', 0.8, combine_dict_diff, combine_dict_cl, model_spec1)
 print('hi')
@@ -493,12 +496,12 @@ print('S1.B')
 # datasets to combine for differentiator 1b
 combine_dict_diff = {}
 combine_dict_diff[data_dir + '/combined_images_unsure.npy'] = data_dir + '/combined_ann_unsure_as_parasite.csv'
-combine_dict_diff[data_dir_base + '/s_b/combined_images_non-parasite_wrong_r18_b16.npy'] = data_dir_base + '/s_b/combined_ann_non-parasite_wrong_r18_b16.csv'
+combine_dict_diff[data_dir_base + '/s_b/combined_images_non-parasite_wrong_r18_b64.npy'] = data_dir_base + '/s_b/combined_ann_non-parasite_wrong_r18_b64.csv'
 
 # datasets to combine for classifier 1b: note that the relabeling hasn't actually happened yet!
 combine_dict_cl = {}
 combine_dict_cl[data_dir + '/combined_images_parasite_and_non-parasite.npy'] = data_dir + '/combined_ann_parasite_and_non-parasite.csv'
-combine_dict_cl[data_dir + '/combined_images_unsure.npy'] = data_dir_base + '/s_1b/unsure_r18_b16_relabeled_thresh_0.9.csv'
+combine_dict_cl[data_dir + '/combined_images_unsure.npy'] = data_dir_base + '/s_1b/unsure_r18_b64_relabeled_thresh_0.9.csv'
 
 differentiator_classifier_wrapper('s_1b', 0.8, combine_dict_diff, combine_dict_cl, model_spec1)
 
@@ -509,13 +512,13 @@ print('S2.A')
 # datasets to combine for differentiator 2a
 combine_dict_diff = {}
 combine_dict_diff[data_dir + '/combined_images_unsure.npy'] = data_dir + '/combined_ann_unsure_as_parasite.csv'
-combine_dict_diff[data_dir_base + '/s_a/combined_images_non-parasite_wrong_r18_b16.npy'] = data_dir_base + '/s_a/combined_ann_non-parasite_wrong_r18_b16.csv'
-combine_dict_diff[data_dir_base + '/s_a/combined_images_parasite_wrong_r18_b16.npy'] = data_dir_base + '/s_a/combined_ann_parasite_wrong_r18_b16.csv'
+combine_dict_diff[data_dir_base + '/s_a/combined_images_non-parasite_wrong_r18_b64.npy'] = data_dir_base + '/s_a/combined_ann_non-parasite_wrong_r18_b64.csv'
+combine_dict_diff[data_dir_base + '/s_a/combined_images_parasite_wrong_r18_b64.npy'] = data_dir_base + '/s_a/combined_ann_parasite_wrong_r18_b64.csv'
 
 # datasets to combine for classifier 2a: note that the relabeling hasn't actually happened yet!
 combine_dict_cl = {}
 combine_dict_cl[data_dir + '/combined_images_parasite_and_non-parasite.npy'] = data_dir + '/combined_ann_parasite_and_non-parasite.csv'
-combine_dict_cl[data_dir + '/combined_images_unsure.npy'] = data_dir_base + '/s_2a/unsure_r18_b16_relabeled_thresh_0.9.csv'
+combine_dict_cl[data_dir + '/combined_images_unsure.npy'] = data_dir_base + '/s_2a/unsure_r18_b64_relabeled_thresh_0.9.csv'
 
 differentiator_classifier_wrapper('s_2a', 0.8, combine_dict_diff, combine_dict_cl, model_spec1)
 
@@ -525,13 +528,13 @@ print('S2.B')
 # datasets to combine for differentiator 2b
 combine_dict_diff = {}
 combine_dict_diff[data_dir + '/combined_images_unsure.npy'] = data_dir + '/combined_ann_unsure_as_parasite.csv'
-combine_dict_diff[data_dir_base + '/s_b/combined_images_non-parasite_wrong_r18_b16.npy'] = data_dir_base + '/s_b/combined_ann_non-parasite_wrong_r18_b16.csv'
-combine_dict_diff[data_dir_base + '/s_b/combined_images_parasite_wrong_r18_b16.npy'] = data_dir_base + '/s_b/combined_ann_parasite_wrong_r18_b16.csv'
+combine_dict_diff[data_dir_base + '/s_b/combined_images_non-parasite_wrong_r18_b64.npy'] = data_dir_base + '/s_b/combined_ann_non-parasite_wrong_r18_b64.csv'
+combine_dict_diff[data_dir_base + '/s_b/combined_images_parasite_wrong_r18_b64.npy'] = data_dir_base + '/s_b/combined_ann_parasite_wrong_r18_b64.csv'
 
 # datasets to combine for classifier 2b: note that the relabeling hasn't actually happened yet!
 combine_dict_cl = {}
 combine_dict_cl[data_dir + '/combined_images_parasite_and_non-parasite.npy'] = data_dir + '/combined_ann_parasite_and_non-parasite.csv'
-combine_dict_cl[data_dir + '/combined_images_unsure.npy'] = data_dir_base + '/s_2b/unsure_r18_b16_relabeled_thresh_0.9.csv'
+combine_dict_cl[data_dir + '/combined_images_unsure.npy'] = data_dir_base + '/s_2b/unsure_r18_b64_relabeled_thresh_0.9.csv'
 
 differentiator_classifier_wrapper('s_2b', 0.8, combine_dict_diff, combine_dict_cl, model_spec1)
 
@@ -542,13 +545,13 @@ print('S3.A')
 # datasets to combine for differentiator 3a
 combine_dict_diff = {}
 combine_dict_diff[data_dir + '/combined_images_unsure.npy'] = data_dir + '/combined_ann_unsure_as_unlabeled.csv'
-combine_dict_diff[data_dir_base + '/s_a/combined_images_non-parasite_wrong_r18_b16.npy'] = data_dir_base + '/s_a/combined_ann_non-parasite_wrong_r18_b16.csv'
-combine_dict_diff[data_dir_base + '/s_a/combined_images_parasite_wrong_r18_b16.npy'] = data_dir_base + '/s_a/combined_ann_parasite_wrong_r18_b16.csv'
+combine_dict_diff[data_dir_base + '/s_a/combined_images_non-parasite_wrong_r18_b64.npy'] = data_dir_base + '/s_a/combined_ann_non-parasite_wrong_r18_b64.csv'
+combine_dict_diff[data_dir_base + '/s_a/combined_images_parasite_wrong_r18_b64.npy'] = data_dir_base + '/s_a/combined_ann_parasite_wrong_r18_b64.csv'
 
 # datasets to combine for classifier 3a: note that the relabeling hasn't actually happened yet!
 combine_dict_cl = {}
 combine_dict_cl[data_dir + '/combined_images_parasite_and_non-parasite.npy'] = data_dir + '/combined_ann_parasite_and_non-parasite.csv'
-combine_dict_cl[data_dir + '/combined_images_unsure.npy'] = data_dir_base + '/s_3a/unsure_r18_b16_relabeled_thresh_0.9.csv'
+combine_dict_cl[data_dir + '/combined_images_unsure.npy'] = data_dir_base + '/s_3a/unsure_r18_b64_relabeled_thresh_0.9.csv'
 
 differentiator_classifier_wrapper('s_3a', -0.8, combine_dict_diff, combine_dict_cl, model_spec1)
 
@@ -558,13 +561,13 @@ print('S3.B')
 # datasets to combine for differentiator 3b
 combine_dict_diff = {}
 combine_dict_diff[data_dir + '/combined_images_unsure.npy'] = data_dir + '/combined_ann_unsure_as_unlabeled.csv'
-combine_dict_diff[data_dir_base + '/s_b/combined_images_non-parasite_wrong_r18_b16.npy'] = data_dir_base + '/s_b/combined_ann_non-parasite_wrong_r18_b16.csv'
-combine_dict_diff[data_dir_base + '/s_b/combined_images_parasite_wrong_r18_b16.npy'] = data_dir_base + '/s_b/combined_ann_parasite_wrong_r18_b16.csv'
+combine_dict_diff[data_dir_base + '/s_b/combined_images_non-parasite_wrong_r18_b64.npy'] = data_dir_base + '/s_b/combined_ann_non-parasite_wrong_r18_b64.csv'
+combine_dict_diff[data_dir_base + '/s_b/combined_images_parasite_wrong_r18_b64.npy'] = data_dir_base + '/s_b/combined_ann_parasite_wrong_r18_b64.csv'
 
 # datasets to combine for classifier 3b: note that the relabeling hasn't actually happened yet!
 combine_dict_cl = {}
 combine_dict_cl[data_dir + '/combined_images_parasite_and_non-parasite.npy'] = data_dir + '/combined_ann_parasite_and_non-parasite.csv'
-combine_dict_cl[data_dir + '/combined_images_unsure.npy'] = data_dir_base + '/s_3b/unsure_r18_b16_relabeled_thresh_0.9.csv'
+combine_dict_cl[data_dir + '/combined_images_unsure.npy'] = data_dir_base + '/s_3b/unsure_r18_b64_relabeled_thresh_0.9.csv'
 
 differentiator_classifier_wrapper('s_3b', -0.8, combine_dict_diff, combine_dict_cl, model_spec1)
 

@@ -2,45 +2,41 @@ import numpy as np
 import pandas as pd
 import os
 
-# folder containing all image and annotations files to combine
-data_dir = '/home/rinni/Desktop/Octopi/data/neg-to-combine/'
+# GLOBAL VARIABLES
+combine_dict = {} # dictionary with image path: ann path
+combine_dict['/media/rinni/Extreme SSD/Rinni/to-combine/sorted_images/combined_images_parasite.npy'] = '/media/rinni/Extreme SSD/Rinni/to-combine/sorted_images/combined_ann_parasite.csv'
+combine_dict['/media/rinni/Extreme SSD/Rinni/to-combine/sorted_images/combined_images_unsure.npy'] = '/media/rinni/Extreme SSD/Rinni/to-combine/sorted_images/combined_ann_unsure.csv'
+combine_dict['/home/rinni/Desktop/Octopi/data/neg-to-combine/neg_combined_images.npy'] = '/home/rinni/Desktop/Octopi/data/neg-to-combine/neg_combined_ann.csv'
 
-dataset_npy_ids = [] # names of all .npy files
-for file in os.listdir(data_dir):
-	if file.endswith('.npy'):
-		if file != 'combined_images.npy':
-			dataset_npy_ids.append(data_dir + file)
+out_im_path = '/media/rinni/Extreme SSD/Rinni/to-combine/sorted_images/combined_images_for_training_performance.npy' # all images except patient negatives
+out_ann_path = '/media/rinni/Extreme SSD/Rinni/to-combine/sorted_images/combined_ann_for_training_performance.csv'
 
-images = []
-annotations = []
 
-for npy_id_ in dataset_npy_ids:
+# combines the datasets in combine_dict; saves the outputs to the given image and annotation files
+def combine_datasets(combine_dict, out_image_path, out_ann_path):
+	images = []
+	annotations = []
+	# add the images / annotations for each dictionary element to their respective lists
+	for npy_path in list(combine_dict.keys()):
+		images_ = np.load(npy_path)
+		ann_pd = pd.read_csv(combine_dict[npy_path],index_col='index')
+		ann_pd = ann_pd.sort_index()
+		annotations_ = ann_pd['annotation'].values.squeeze()
 
-	images_ = np.load(npy_id_)
+		images.append(images_)
+		annotations.append(annotations_)
+	
+	# combine
+	images = np.concatenate(images, axis=0)
+	print('The combined images have shape: '); print(images.shape)
 
-	# annotation_id_ = data_dir + dataset_npy_ids[npy_id_]
-	# annotation_id_ = os.path.splitext(npy_id_)[0] + '_annotations.csv' # assumes the annotations file has the same name with _annotations at the end
-	# if os.path.exists(annotation_id_):
-	# 	annotation_pd = pd.read_csv(annotation_id_,index_col='index')
-	# 	annotation_pd = annotation_pd.sort_index()
-	# 	# idx = annotation_pd['annotation'].isin([0, 1, 2]) # save all annotated images 
-	# 	idx = annotation_pd['annotation'].isin([0, 1]) # save positive and negative images only
-	# 	images_ = images_[idx,]
-	# 	annotation_pd = annotation_pd[idx]
-	# 	annotations_ = annotation_pd['annotation'].values.squeeze()
-	# else:
-	# 	print('Can\'t find annotation file: ' + annotation_id_)
+	annotations = np.concatenate(annotations)
+	comb_ann_df = pd.DataFrame({'annotation':annotations})
+	comb_ann_df.index.name = 'index'
 
-	print(images_.shape)
-	images.append(images_)
-	# annotations.append(annotations_)
+	# save
+	np.save(out_image_path, images)
+	comb_ann_df.to_csv(out_ann_path)
 
-images = np.concatenate(images,axis=0)
-# annotations = np.concatenate(annotations)
 
-print(images.shape)
-
-np.save(data_dir + '/neg_combined_images.npy',images)
-# df = pd.DataFrame({'annotation':annotations})
-# df.index.name = 'index'
-# df.to_csv(data_dir + '/combined_ann_unsure_as_pos_and_mislabeled_neg_and_pos.csv')
+combine_datasets(combine_dict, out_im_path, out_ann_path)
