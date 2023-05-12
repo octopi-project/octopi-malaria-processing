@@ -43,8 +43,8 @@ if __name__ == '__main__':
     gcs_settings['gcs_project'] = gcs_project
     gcs_settings['gcs_token'] = gcs_token
 
-    bucket_source = 'gs://octopi-malaria-uganda-2022-data'
-    bucket_destination = 'gs://octopi-malaria-uganda-2022-data'
+    bucket_source = 'octopi-malaria-uganda-2022-data'
+    bucket_destination = 'octopi-malaria-uganda-2022-data-processing'
 
     settings = {}
     settings['export selected spots'] = export_selected_spots
@@ -80,6 +80,7 @@ if __name__ == '__main__':
         parameters['crop_y0'] = 100
         parameters['crop_y1'] = 2900
 
+        '''
         # get spot data
         if export_selected_spots:
             spot_data_pd = pd.read_csv('spot_data_selected_' + dataset_id + '.csv', index_col=None, header=0)
@@ -91,6 +92,7 @@ if __name__ == '__main__':
         print("parallel extraction of spot images from dataset " + dataset_id)
         with get_context("spawn").Pool(processes=8) as pool:
             pool.map(partial(process_column,spot_data_pd=spot_data_pd,gcs_settings=gcs_settings,dataset_id=dataset_id,parameters=parameters,settings=settings),columns)
+        '''
 
         # combine images from different FOV and generate mapping
         print("combine images from different FOVs")
@@ -104,11 +106,12 @@ if __name__ == '__main__':
                     mapping_fov = pd.read_csv(dir_in + '/' + file_id + '.csv', header=0,index_col=0)
                     mapping_pd = pd.concat([mapping_pd,mapping_fov])
                 if os.path.exists(dir_in + '/' + file_id + '.npy'):
-                    ds = np.load(dir_in + '/' + file_id + '.npy')
+                    ds = np.load(dir_in + '/' + file_id + '.npy',allow_pickle=True)
                     if counter == 0:
                         data_all = ds
                     else:
                         data_all = np.concatenate([data_all,ds],axis=0)
+                print(counter)
                 counter = counter + 1
         mapping_pd.reset_index(inplace=True)
         mapping_pd.rename(columns={'index':'global_index'},inplace=True)
