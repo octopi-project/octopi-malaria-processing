@@ -12,6 +12,7 @@ from functools import partial
 import multiprocessing as mp
 from multiprocessing import get_context
 from export_spot_images_column import process_column
+import time
 
 version = 1
 
@@ -31,14 +32,14 @@ if __name__ == '__main__':
     if args.data_id != None:
         DATASET_ID = [args.data_id]
     else:
-        f = open('list of datasets.txt','r')
+        f = open('/home/rinni/octopi-malaria/export spot images rb/list of datasets.txt','r')
         DATASET_ID = f.read()
         DATASET_ID = DATASET_ID.split('\n')
         f.close()
 
     # gcs setting
     gcs_project = 'soe-octopi'
-    gcs_token = 'data-20220317-keys.json'
+    gcs_token = '/home/rinni/octopi-malaria/export spot images rb/data-20220317-keys.json'
     gcs_settings = {}
     gcs_settings['gcs_project'] = gcs_project
     gcs_settings['gcs_token'] = gcs_token
@@ -53,6 +54,7 @@ if __name__ == '__main__':
     settings['save to gcs'] = save_intermediate_to_gcs
 
     for dataset_id in DATASET_ID:
+        time0 = time.time()
 
         print('<processing ' + dataset_id + '>')
     
@@ -79,8 +81,7 @@ if __name__ == '__main__':
         parameters['crop_x1'] = 2900
         parameters['crop_y0'] = 100
         parameters['crop_y1'] = 2900
-
-        '''
+        
         # get spot data
         if export_selected_spots:
             spot_data_pd = pd.read_csv('spot_data_selected_' + dataset_id + '.csv', index_col=None, header=0)
@@ -92,11 +93,10 @@ if __name__ == '__main__':
         print("parallel extraction of spot images from dataset " + dataset_id)
         with get_context("spawn").Pool(processes=8) as pool:
             pool.map(partial(process_column,spot_data_pd=spot_data_pd,gcs_settings=gcs_settings,dataset_id=dataset_id,parameters=parameters,settings=settings),columns)
-        '''
-
+        
         # combine images from different FOV and generate mapping
         print("combine images from different FOVs")
-        dir_in = 'spot images_' + dataset_id
+        dir_in = '/media/rinni/Extreme SSD/Rinni/Octopi/data/spot images_' + dataset_id
         mapping_pd = pd.DataFrame()
         counter = 0
         for i in range(parameters['row_start'],parameters['row_end']):
@@ -111,7 +111,6 @@ if __name__ == '__main__':
                         data_all = ds
                     else:
                         data_all = np.concatenate([data_all,ds],axis=0)
-                print(counter)
                 counter = counter + 1
         mapping_pd.reset_index(inplace=True)
         mapping_pd.rename(columns={'index':'global_index'},inplace=True)
@@ -123,17 +122,25 @@ if __name__ == '__main__':
             with fs.open( bucket_destination + '/' + dataset_id + '/' + 'mapping.csv', 'wb' ) as f:
               mapping_pd.to_csv(f,index=False)
 
-        if save_locally == False:
-            print("upload spot images")
-            fs.put(dataset_id + '_spot_images.zip',bucket_destination + '/' + dataset_id + '/version' + str(version) + '/spot_images.zip')
-            os.remove(dataset_id + '_spot_images.zip')
+        # # save all spot images into a zip store
+        # ds_all = xr.Dataset({'spot_images':data_all})
+        # with zarr.ZipStore(dataset_id + '_spot_images.zip', mode='w') as store:
+        #     ds_all.to_zarr(store, mode='w')
+
+        # if save_locally == False:
+        #     print("upload spot images")
+        #     fs.put(dataset_id + '_spot_images.zip',bucket_destination + '/' + dataset_id + '/version' + str(version) + '/spot_images.zip')
+        #     os.remove(dataset_id + '_spot_images.zip')
 
         # save numpy
         a = 15
-        images = ds_all.spot_images[:, :, 0, 30-a:30+a+1, 30-a:30+a+1].to_numpy()
-        print(images.shape)
-        np.save(dataset_id +'.npy',images)
+        print(data_all.shape)
+        # images = data_all[:, :, 30-a:30+a+1, 30-a:30+a+1]
+        # print(images.shape)
+        np.save('/media/rinni/Extreme SSD/rinni/Octopi/data/' + dataset_id +'_new.npy',data_all) # save to SSD
+        time1 = time.time()
+        print('Processing dataset ' + dataset_id + ' took ' + str(time1) + 's')
             
-        # remove intermidate result
-        print("remove intermidiate files")
+        # remove intermediate result
+        print("remove intermediate files")
         shutil.rmtree(dir_in)

@@ -25,7 +25,7 @@ def generate_dpc(I1,I2,use_gpu=False):
 	I_dpc[I_dpc>1] = 1
 	return I_dpc
 
-def export_spot_images_from_fov(I_fluorescence,I_dpc,spot_data,parameters,settings,gcs_settings,dir_out=None,r=30,generate_separate_images=False):
+def export_spot_images_from_fov(I_fluorescence,I_dpc,spot_data,parameters,settings,gcs_settings,dir_out=None,r=15,generate_separate_images=False):
 	# if RGB
 	if(len(I_dpc.shape)==3):
 		I_dpc = I_dpc[:,:,1]
@@ -34,16 +34,25 @@ def export_spot_images_from_fov(I_fluorescence,I_dpc,spot_data,parameters,settin
 
 	# go through the spots
 	counter = 0
+	# TODO: for now, I'm filtering by G/B and R/B
+	# filter for B != 0
+	spot_data_filt1 = spot_data[spot_data['B'] != 0]
+	if len(spot_data_filt1) > 600:
+		spot_data_filt1 = spot_data_filt1.sample(n=600)
+	# filter for G/B > 0.5 and R/B < 0.8
+	# spot_data_filt2 = spot_data_filt1[(spot_data_filt1['G'] / spot_data_filt1['B'] > 0.5) & (spot_data_filt1['R'] / spot_data_filt1['B'] < 0.8)]
+	# # TEST: all other images
+	# spot_data_filt3 = spot_data_filt1[(spot_data_filt1['G'] / spot_data_filt1['B'] < 0.5) | (spot_data_filt1['R'] / spot_data_filt1['B'] > 0.8)]
 	
-	for idx, entry in spot_data.iterrows(): # go through all spots in spot_data, a df
+	for idx, entry in spot_data_filt1.iterrows(): # go through all spots in spot_data, a df
 		# get coordinate
 		i = int(entry['FOV_row']) # i,j should be the same for all entries
 		j = int(entry['FOV_col'])
 		x = int(entry['x'])
 		y = int(entry['y'])
 		# create the arrays for cropped images
-		I_DPC_cropped = np.zeros((2*r+1,2*r+1), np.float)
-		I_fluorescence_cropped = np.zeros((2*r+1,2*r+1,3), np.float)
+		I_DPC_cropped = np.zeros((2*r+1,2*r+1), float)
+		I_fluorescence_cropped = np.zeros((2*r+1,2*r+1,3), float)
 		# identify cropping region in the full FOV 
 		x_start = max(0,x-r)
 		x_end = min(x+r,width-1)
@@ -70,17 +79,16 @@ def export_spot_images_from_fov(I_fluorescence,I_dpc,spot_data,parameters,settin
 		counter = counter + 1
 
 	if counter == 0:
-		print('no spot in this FOV')
+		print('no spots in this FOV')
 	else:
 		# convert to xarray
 		# data = xr.DataArray(I,coords={'c':['B','G','R','DPC']},dims=['t','y','x','c'])
 		data = xr.DataArray(I,dims=['t','y','x','c'])
-		data = data.expand_dims('z')
-		data = data.transpose('t','c','z','y','x')
+		data = data.transpose('t','c','y','x')
 		data = (data*255).astype('uint8')
 		ds = xr.Dataset({'spot_images':data})
 		np.save(dir_out + '/' + str(i) + '_' + str(j) + '.npy', ds.spot_images.values)
 
 		# save per FOV spot data for mapping
-		spot_data = spot_data[['FOV_row','FOV_col','FOV_z','x','y','r','idx']]
-		spot_data.to_csv(dir_out + '/' + str(i) + '_' + str(j) + '.csv')
+		spot_data_filt1 = spot_data_filt1[['FOV_row','FOV_col','FOV_z','x','y','r','idx']]
+		spot_data_filt1.to_csv(dir_out + '/' + str(i) + '_' + str(j) + '.csv')

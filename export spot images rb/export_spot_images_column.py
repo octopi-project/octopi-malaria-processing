@@ -43,7 +43,7 @@ def process_column(j,spot_data_pd,gcs_settings,dataset_id,parameters,settings,fs
         if settings['save to gcs']:
           dir_out = None
         else:
-          dir_out = 'spot images_' + dataset_id
+          dir_out = '/media/rinni/Extreme SSD/Rinni/Octopi/data/spot images_' + dataset_id
           if not os.path.exists(dir_out):
             os.mkdir(dir_out)
-        export_spot_images_from_fov(I_fluorescence,I_DPC,spot_data_current_fov,parameters,settings,gcs_settings,dir_out=dir_out,r=30)
+        export_spot_images_from_fov(I_fluorescence,I_DPC,spot_data_current_fov,parameters,settings,gcs_settings,dir_out=dir_out,r=15)
