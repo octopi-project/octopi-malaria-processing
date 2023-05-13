@@ -5,7 +5,7 @@ import imageio
 from utils import *
 import matplotlib.pyplot as plt
 
-fov_path = '0_0_0_fl.png'
+fov_path = '0_0_0_fl.bmp'
 settings = {}
 settings['spot_detection_downsize_factor'] = 4
 settings['saving_file_format'] = 'bmp'

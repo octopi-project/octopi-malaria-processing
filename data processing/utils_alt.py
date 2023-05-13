@@ -1,6 +1,7 @@
 import imageio
 import cv2
 import numpy as np
+import scipy
 import scipy.ndimage as ndimage
 from scipy.ndimage import laplace
 from skimage.feature.blob import _prune_blobs
@@ -74,8 +75,8 @@ def detect_spots(I, thresh = 12):
 	spots = np.zeros((ind[0].shape[0],3)) # num spots x 3
 	for i in range(ind[0].shape[0]):
 		spots[i][0] = int(ind[1][i])
-		spots[i][1] = int(ind[0][i])
-		spots[i][2] = int(img_traceback[spots[i][1]][spots[i][0]])
+		spots[i][1] = ind[0][i]
+		spots[i][2] = int(img_traceback[int(spots[i][1])][int(spots[i][0])])
 	spots = spots.astype(int)
 	return spots
 

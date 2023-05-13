@@ -17,7 +17,7 @@ def run_model(ann_dict, model, images, ann_df, out_ann_w_pred_path, batch_size_i
     output_pd = pd.DataFrame(index = np.arange(images.shape[0]))
     i = 0 # counter
     for key in ann_dict:
-        if ann_dict[key] in np.round(ann_df['annotation'].values) and ann_dict[key] >= 0:
+        if ann_dict[key] >= 0:
             output_pd[key + ' output'] = predictions[:,i]
             i += 1
 
@@ -65,20 +65,20 @@ def generate_predictions_and_features(model, images, batch_size_inference = 2048
 # GLOBAL VARIABLES
 
 # get images to run predictions on from lists of datasets that were just processed
-# f = open('/home/rinni/octopi-malaria/export spot images rb/pos list of datasets.txt','r')
-f = open('/home/rinni/octopi-malaria/export spot images rb/neg list of datasets.txt','r')
+f = open('/home/rinni/octopi-malaria/export spot images rb/pos list of datasets.txt','r')
+# f = open('/home/rinni/octopi-malaria/export spot images rb/neg list of datasets.txt','r')
 DATASET_ID = f.read()
 DATASET_ID = DATASET_ID.split('\n')
 DATASET_ID = DATASET_ID[:-1] # remove empty string at end
 f.close()
 
-# dir_in = '/media/rinni/Extreme SSD/Rinni/Octopi/data/pos_testing_slides/'
-dir_in = '/media/rinni/Extreme SSD/Rinni/Octopi/data/neg_testing_slides/'
+dir_in = '/media/rinni/Extreme SSD/Rinni/Octopi/data/pos_testing_slides/'
+# dir_in = '/media/rinni/Extreme SSD/Rinni/Octopi/data/neg_testing_slides/'
 
 image_paths = [dir_in + x + '.npy' for x in DATASET_ID]
 
-# ann_slide = 1 # 1 if pos, 0 if neg
-ann_slide = 0
+ann_slide = 1 # 1 if pos, 0 if neg
+# ann_slide = 0
 
 data_dir = '/media/rinni/Extreme SSD/Rinni/to-combine/'
 folders = ['s_a','s_b','s_1a','s_1b','s_2a','s_2b','s_3a','s_3b']
