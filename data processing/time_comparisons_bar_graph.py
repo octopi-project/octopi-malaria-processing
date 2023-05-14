@@ -57,14 +57,15 @@ rects1 = ax.bar(x_positions - bar_width/2, y_values_dict1, bar_width, color='r',
 rects2 = ax.bar(x_positions + bar_width/2, y_values_dict2, bar_width, color='b', label='No GPU')
 
 # Add some text for labels, title and axes ticks
-ax.set_xlabel('Keys')
+ax.set_xlabel('Pipeline Steps')
 ax.set_ylabel('Time')
 ax.set_title('Comparison of Processing Time: GPU vs. No GPU Support')
 ax.set_xticks(x_positions)
 ax.set_xticklabels(x_labels, rotation=60)
 ax.legend()
 
-# Show the plot
-plt.show()
+# # Show the plot
+# plt.show()
 # save it
-plt.savefig("timing_comparisons_bar_graph.png")
+plt.tight_layout()
+plt.savefig("../figures/timing_comparisons_bar_graph.png")
