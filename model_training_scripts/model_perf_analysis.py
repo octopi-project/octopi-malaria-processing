@@ -5,25 +5,28 @@ import os
 # GLOBAL VARIABLES
 
 pos_class = 'parasite'
-unsure_relabeled = True
-unsure_ignored = False
+diff_and_unsure_relabeled = False
+multiclass_and_unsure_ignored = True
 
-data_dir = data_dir = '../ann_with_predictions_r34_b32/s_3b'
-ann_w_pred_path = '/ann_with_predictions_cl_r34_b32.csv'
-if unsure_ignored:
-    performance_out_path = data_dir + '/model_r34_b32_performance_' + pos_class + '_v_rest_unsure_ignored.csv'
+classifier = 's_b'
+model_arch = '_r18_b32'
+data_dir ='../perf-to-export/' + classifier + '/test_predictions/'
+ann_w_pred_path = 'model' + model_arch + '_evaluation_ann_with_predictions.csv'
+
+if multiclass_and_unsure_ignored:
+    performance_out_path = data_dir + '/model' + model_arch + '_performance_' + pos_class + '_v_rest_unsure_ignored.csv'
 else:
-    performance_out_path = data_dir + '/model_r34_b32_performance_' + pos_class + '_v_rest.csv'
+    performance_out_path = data_dir + '/model' + model_arch + '_performance_' + pos_class + '_v_rest.csv'
 
 ann_w_pred_df = pd.read_csv(data_dir + ann_w_pred_path, index_col = 'index')
-if unsure_relabeled:
-    unsure_relabeled_path = '/unsure_r34_b32_relabeled_thresh_0.9.csv'
+if diff_and_unsure_relabeled:
+    unsure_relabeled_path = '/unsure' + model_arch + '_relabeled_thresh_0.9.csv'
     unsure_df = pd.read_csv(data_dir + unsure_relabeled_path, index_col = 'index')
     for index in unsure_df.index:
         ann_w_pred_df.loc[index, 'annotation'] = 2
 
 # suppose the annotations have 3 labels: non-par, par, unsure
-if unsure_ignored:
+if multiclass_and_unsure_ignored:
     # if I want to ignore all unsure for performance analysis:
     ann_dict = {'non-parasite':0, 'parasite':1}
 else:

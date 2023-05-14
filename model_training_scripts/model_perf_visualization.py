@@ -6,19 +6,21 @@ import numpy as np
 # GLOBAL VARIABLES
 
 pos_class = 'parasite'
-unsure_ignored = True
+multiclass_and_unsure_ignored = True
 
-data_dir = '../ann_with_predictions_r34_b32/s_3b'
+classifier = 's_b'
+model_arch = '_r34_b32'
+data_dir ='../perf-to-export/' + classifier + '/test_predictions/'
 trend_1 = 'FP'
 trend_2 = 'FNR'
 plot_title = 'Model 3B: ' + pos_class + ' prediction threshold vs. ' + trend_1 + ' and ' + trend_2
 
-if unsure_ignored:
-    model_performance_path = data_dir + '/model_r34_b32_performance_' + pos_class + '_v_rest_unsure_ignored.csv'
-    plot_path = data_dir + '/model_r34_b32_performance_' + pos_class + '_v_rest_unsure_ignored_' + trend_1 + '_and_' + trend_2 + '.png'
+if multiclass_and_unsure_ignored:
+    model_performance_path = data_dir + '/model' + model_arch + '_performance_' + pos_class + '_v_rest_unsure_ignored.csv'
+    plot_path = data_dir + '/model' + model_arch + '_' + pos_class + '_v_rest_unsure_ignored_' + trend_1 + '_and_' + trend_2 + '.png'
 else:
-    model_performance_path = data_dir + '/model_r34_b32_performance_' + pos_class + '_v_rest.csv'
-    plot_path = data_dir + '/model_r34_b32_performance_' + pos_class + '_v_rest_' + trend_1 + '_and_' + trend_2 + '.png'
+    model_performance_path = data_dir + '/model' + model_arch + '_performance_' + pos_class + '_v_rest.csv'
+    plot_path = data_dir + '/model' + model_arch + '_' + pos_class + '_v_rest_' + trend_1 + '_and_' + trend_2 + '.png'
 
 model_perf_df = pd.read_csv(model_performance_path, index_col = 'index')
 index_label = model_perf_df[model_perf_df['thresh'] == 0.8].index[0]
