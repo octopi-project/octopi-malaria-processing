@@ -8,12 +8,12 @@ import numpy as np
 pos_class = 'parasite'
 multiclass_and_unsure_ignored = True
 
-classifier = 's_b'
-model_arch = '_r34_b32'
+classifier = 's_a'
+model_arch = '_r18_b32'
 data_dir ='../perf-to-export/' + classifier + '/test_predictions/'
-trend_1 = 'FP'
+trend_1 = 'FPR'
 trend_2 = 'FNR'
-plot_title = 'Model 3B: ' + pos_class + ' prediction threshold vs. ' + trend_1 + ' and ' + trend_2
+plot_title = 'Resnet18 A: ' + pos_class + ' prediction threshold vs. ' + trend_1 + ' and ' + trend_2
 
 if multiclass_and_unsure_ignored:
     model_performance_path = data_dir + '/model' + model_arch + '_performance_' + pos_class + '_v_rest_unsure_ignored.csv'
@@ -38,7 +38,7 @@ ax1.set_ylabel(trend_1, color=color)
 ax1.yaxis.set_major_locator(ticker.MaxNLocator(20))
 ax1.plot(model_perf_df['thresh'], model_perf_df[trend_1], color=color, marker='o', markersize=1)
 ax1.tick_params(axis='y', labelcolor=color)
-plt.ticklabel_format(style='plain', axis='y')
+ax1.ticklabel_format(style='sci', axis='y', scilimits=(0, 0))
 
 ax2 = ax1.twinx()
 
