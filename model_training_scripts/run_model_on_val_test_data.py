@@ -63,35 +63,38 @@ def generate_predictions_and_features(model, images, batch_size_inference = 2048
     return predictions, features
 
 # GLOBAL VARIABLES
-classifier = '/s_a/'
-model_arch = '_r18_b32'
+classifier = '/s_3a/'
+model_arch = '_r34_b32'
 if 's_a' in classifier:
     ann_dict = {'non-parasite':0, 'parasite':1, 'unsure':2}
 else:
     ann_dict = {'non-parasite':0, 'parasite':1}
 
 im_folder = '/media/rinni/Extreme SSD/Rinni/to-combine/sorted_images/'
-model_folder = im_folder + classifier
+model_folder = '/media/rinni/Extreme SSD/Rinni/to-combine/' + classifier
 
-model_path = model_folder + 'model' + model_arch + '.pt'
+model_path = model_folder + 'model_perf_cl' + model_arch + '.pt'
 im_test_path = im_folder + 'combined_images_val.npy'
 im_train_path = im_folder + 'combined_images.npy'
 val_ind_path = model_folder + 'indices' + model_arch + '.csv'
-ann_test_path = im_folder + 'combined_ann_val.npy'
-ann_train_path = im_folder + 'combined_ann.npy'
+ann_test_path = im_folder + 'combined_ann_val.csv'
+ann_train_path = im_folder + 'combined_ann.csv'
 
 model = torch.load(model_path)
 im_test = np.load(im_test_path)
 im_train = np.load(im_train_path)
 val_indices = np.genfromtxt(val_ind_path, delimiter=',')
+val_indices = val_indices.astype(int)
 im_val = im_train[val_indices,:,:,:]
 ann_test = pd.read_csv(ann_test_path, index_col='index').values.squeeze()
 ann_train = pd.read_csv(ann_train_path, index_col='index').values.squeeze()
 ann_val = ann_train[val_indices]
 
 im_for_evaluating = np.concatenate((im_test, im_val), axis=0)
-ann_for_evaluating = np.concatenate((ann_test, ann_train), axis=0)
+print(im_for_evaluating.shape)
+ann_for_evaluating = np.concatenate((ann_test, ann_val), axis=0)
 ann_for_evaluating = pd.DataFrame({'annotation':ann_for_evaluating})
+print(ann_for_evaluating)
 ann_for_evaluating.index.name = 'index'
 
 summary_path = model_folder + 'model' + model_arch + '_summary.txt'

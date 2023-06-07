@@ -65,24 +65,24 @@ def generate_predictions_and_features(model, images, batch_size_inference = 2048
 # GLOBAL VARIABLES
 
 # get images to run predictions on from lists of datasets that were just processed
-f = open('/home/rinni/octopi-malaria/export spot images rb/pos list of datasets.txt','r')
-# f = open('/home/rinni/octopi-malaria/export spot images rb/neg list of datasets.txt','r')
+# f = open('/home/rinni/octopi-malaria/export spot images rb/pos list of datasets.txt','r')
+f = open('/home/rinni/octopi-malaria/export spot images rb/neg list of datasets.txt','r')
 DATASET_ID = f.read()
 DATASET_ID = DATASET_ID.split('\n')
 DATASET_ID = DATASET_ID[:-1] # remove empty string at end
 f.close()
 
-dir_in = '/media/rinni/Extreme SSD/Rinni/Octopi/data/pos_testing_slides/'
-# dir_in = '/media/rinni/Extreme SSD/Rinni/Octopi/data/neg_testing_slides/'
+# dir_in = '/media/rinni/Extreme SSD/Rinni/Octopi/data/pos_testing_slides/'
+dir_in = '/media/rinni/Extreme SSD/Rinni/Octopi/data/neg_testing_slides/'
 
 image_paths = [dir_in + x + '.npy' for x in DATASET_ID]
 
-ann_slide = 1 # 1 if pos, 0 if neg
-# ann_slide = 0
+# ann_slide = 1 # 1 if pos, 0 if neg
+ann_slide = 0
 
 data_dir = '/media/rinni/Extreme SSD/Rinni/to-combine/'
-folders = ['s_a','s_b','s_1a','s_1b','s_2a','s_2b','s_3a','s_3b']
-model_tail = '_r18_b32'
+folders = ['s_3a','s_3b']
+model_tail = '_r34_b32'
 
 # go through images for predictions
 for image_path in image_paths:
