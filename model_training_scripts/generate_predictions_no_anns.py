@@ -5,7 +5,6 @@ import numpy as np
 
 # input paths
 ims_path = 'example_im.npy' # path to images for training
-ann_path = 'example_ann.csv' # path to their respective annotations
 model_path = 'example_model.pt' # path to the trained model
 
 # model training parameters
@@ -16,9 +15,12 @@ ann_dict = {'non-parasite':0, 'parasite':1, 'unsure':2, 'unlabeled':-1}
 ann_w_pred_path = 'example_ann_w_predictions.csv' # saves the annotations csv but with prediction scores for all classes
 
 
-# open the input files
-ann_df = pd.read_csv(ann_path, index_col='index')
+# open the input anns, images, and model
 images = np.load(ims_path)
+
+ann_df = pd.DataFrame({'annotation':-1},index=np.arange(images.shape[0]))
+ann_df.index.name = 'index'
+
 # load the model
 if torch.cuda.is_available():
     model = torch.load(model_path)
