@@ -280,6 +280,8 @@ def run_model(ann_dict, model, images, ann_df, out_ann_w_pred_path, batch_size_i
 	# save
 	ann_w_pred_df.to_csv(out_ann_w_pred_path)
 
+	return ann_w_pred_df
+
 # gets the predictions (and features?) given a model and input images
 def generate_predictions_and_features(model, images, batch_size_inference = 2048):
 	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
