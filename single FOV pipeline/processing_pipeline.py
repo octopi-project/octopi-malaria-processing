@@ -46,8 +46,8 @@ def process_fov(I_fluorescence,I_BF_left,I_BF_right,model,device,classification_
     I = I.transpose(0, 3, 1, 2)
 
     # classify
-    prediction_score_negative_sample = run_model(model,device,I)[:,1]
-    indices = np.where(prediction_score_negative_sample > classification_th)[0]
+    prediction_score = run_model(model,device,I)[:,1]
+    indices = np.where(prediction_score > classification_th)[0]
 
     # return positive spots
-    return I[indices]
+    return I[indices],prediction_score[indices]

@@ -35,9 +35,15 @@ I_BF_left = imageio.v2.imread('1_1_0_BF_LED_matrix_left_half.bmp')
 I_BF_right = imageio.v2.imread('1_1_0_BF_LED_matrix_right_half.bmp')
 
 # process fov
-I = process_fov(I_fluorescence,I_BF_left,I_BF_right,model,device,classification_th)
+I,score = process_fov(I_fluorescence,I_BF_left,I_BF_right,model,device,classification_th)
 print(I.shape)
 
 # export images
+np.save('positives.npy',I*255)
+
+# save prediction score
+df = pd.DataFrame(score, columns=["output"])
+df.to_csv('score.csv', index=True, index_label="index")
+
 for i in range(len(I)):
     numpy2png(255*I[i],'result/'+str(i))
