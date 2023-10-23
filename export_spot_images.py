@@ -111,7 +111,7 @@ if __name__ == '__main__':
                         data_all = ds
                     else:
                         data_all = np.concatenate([data_all,ds],axis=0)
-                if counter > 300:
+                if counter > 300: # IT ONLY EXPORTS 300 IMAGES
                     break
                 counter = counter + 1
         mapping_pd.reset_index(inplace=True)
