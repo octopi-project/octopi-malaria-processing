@@ -32,14 +32,14 @@ if __name__ == '__main__':
     if args.data_id != None:
         DATASET_ID = [args.data_id]
     else:
-        f = open('/home/rinni/octopi-malaria/export spot images rb/list of datasets.txt','r')
+        f = open('/home/octopi/Desktop/Octopi/Notebook/all-test/list-of-datasets-to-export.txt','r')
         DATASET_ID = f.read()
         DATASET_ID = DATASET_ID.split('\n')
         f.close()
 
     # gcs setting
     gcs_project = 'soe-octopi'
-    gcs_token = '/home/rinni/octopi-malaria/export spot images rb/data-20220317-keys.json'
+    gcs_token = '/home/octopi/Desktop/octopi-malaria/export spot images rb/data-20220317-keys.json'
     gcs_settings = {}
     gcs_settings['gcs_project'] = gcs_project
     gcs_settings['gcs_token'] = gcs_token
@@ -52,6 +52,8 @@ if __name__ == '__main__':
     settings['bucket_source'] = bucket_source
     settings['bucket_destination'] = bucket_destination
     settings['save to gcs'] = save_intermediate_to_gcs
+
+    skipped_datasets = []
 
     for dataset_id in DATASET_ID:
         time0 = time.time()
@@ -83,11 +85,17 @@ if __name__ == '__main__':
         parameters['crop_y1'] = 2900
         
         # get spot data
-        if export_selected_spots:
-            spot_data_pd = pd.read_csv('spot_data_selected_' + dataset_id + '.csv', index_col=None, header=0)
-        else:
-            with fs.open( bucket_destination + '/' + dataset_id + '/' + 'spot_data_raw.csv', 'r' ) as f:
-                spot_data_pd = pd.read_csv(f, index_col=None, header=0)
+        try:
+            if export_selected_spots:
+                spot_data_pd = pd.read_csv('spot_data_selected_' + dataset_id + '.csv', index_col=None, header=0)
+            else:
+                with fs.open( bucket_destination + '/' + dataset_id + '/' + 'spot_data_raw.csv', 'r' ) as f:
+                    spot_data_pd = pd.read_csv(f, index_col=None, header=0)
+        except:
+            print("skipping dataset")
+            skipped_datasets += [dataset_id]
+            print(skipped_datasets)
+            continue
         
         # process FOV
         print("parallel extraction of spot images from dataset " + dataset_id)
@@ -96,7 +104,7 @@ if __name__ == '__main__':
         
         # combine images from different FOV and generate mapping
         print("combine images from different FOVs")
-        dir_in = '/media/rinni/Extreme SSD/Rinni/Octopi/data/spot images_' + dataset_id
+        dir_in = '/media/octopi/Extreme SSD/Rinni/Octopi/data/all_patient_slides/spot images_' + dataset_id
         mapping_pd = pd.DataFrame()
         counter = 0
         for i in range(parameters['row_start'],parameters['row_end']):
@@ -137,7 +145,7 @@ if __name__ == '__main__':
         print(data_all.shape)
         # images = data_all[:, :, 30-a:30+a+1, 30-a:30+a+1]
         # print(images.shape)
-        np.save('/media/rinni/Extreme SSD/rinni/Octopi/data/' + dataset_id +'_new.npy',data_all) # save to SSD
+        np.save('/media/octopi/Extreme SSD/Rinni/Octopi/data/all_patient_slides/' + dataset_id +'.npy',data_all) # save to SSD
         time1 = time.time()
         print('Processing dataset ' + dataset_id + ' took ' + str(time1) + 's')
             

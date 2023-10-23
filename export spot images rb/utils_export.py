@@ -37,7 +37,7 @@ def export_spot_images_from_fov(I_fluorescence,I_dpc,spot_data,parameters,settin
 	# TODO: for now, I'm filtering by G/B and R/B
 	# filter for B != 0
 	spot_data_filt1 = spot_data[spot_data['B'] != 0]
-	if len(spot_data_filt1) > 600:
+	if len(spot_data_filt1) > 600: # EXPORTS MAX 600 IMAGES
 		spot_data_filt1 = spot_data_filt1.sample(n=600)
 	# filter for G/B > 0.5 and R/B < 0.8
 	# spot_data_filt2 = spot_data_filt1[(spot_data_filt1['G'] / spot_data_filt1['B'] > 0.5) & (spot_data_filt1['R'] / spot_data_filt1['B'] < 0.8)]
