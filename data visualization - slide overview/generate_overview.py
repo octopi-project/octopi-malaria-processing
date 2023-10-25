@@ -80,7 +80,7 @@ if __name__ == '__main__':
         I_DPC_WSI = np.zeros((Ny*parameters['a'],Nx*parameters['a'],3))
         I_fluorescence_WSI = np.zeros((Ny*parameters['a'],Nx*parameters['a'],3))
 
-        # dir_out = 'result/' + dataset_id
+        dir_out = 'result/' + dataset_id
         # if not os.path.exists(dir_out):
         #     os.mkdir(dir_out)
 
