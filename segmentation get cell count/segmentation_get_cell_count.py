@@ -11,7 +11,7 @@ import json
 from utils import *
 import cv2
 
-DEBUGGING = True # set true to only process 4 FOVs from each dataset
+DEBUGGING = False # set true to only process 4 FOVs from each dataset
 
 def main():
     # Get the M2U-Net model
@@ -36,12 +36,19 @@ def main():
     with open('list of datasets.txt','r') as f:
         DATASET_ID = f.read()
         DATASET_ID = DATASET_ID.split('\n')
+    
+    # Save the counts locally
+    dst_count = 'counts'
+    os.makedirs(dst_count, exist_ok=True)
+    
     for dataset_id in DATASET_ID:
         print(dataset_id)
-        count = run_segmentation(fs, model, src, dst_msk, dataset_id, flatfield_left, flatfield_right, save_masks, save_overlays)
+        count = get_cell_count(fs, model, src, dst_msk, dataset_id, flatfield_left, flatfield_right)
+        path = os.path.join(dst_count, f"{dataset_id}_segmentation_stat.txt")
+        count.to_csv(path, encoding='utf-8', index=False)
     return
 
-def run_segmentation(fs, model, source, dest, dataset_ID, flatfield_left, flatfield_right, save_masks, save_overlays):
+def get_cell_count(fs, model, source, dest, dataset_ID, flatfield_left, flatfield_right):
     # Check if our source and destination are remote
     source_remote = False
     source_open = open
@@ -78,7 +85,6 @@ def run_segmentation(fs, model, source, dest, dataset_ID, flatfield_left, flatfi
     
     # Make a local version of the df
     local_segmentation_stat_df = pd.DataFrame(columns=['FOV_row','FOV_col','count'])
-    total_cells = 0
     
     # Loop through each view to check if it has been segmented.
     for x, y, z in tqdm(product(range(acquisition_parameters['Nx']),range(acquisition_parameters['Ny']),range(acquisition_parameters['Nz'])) , total=(acquisition_parameters['Nx'] * acquisition_parameters['Ny'] * acquisition_parameters['Nz'])):
@@ -97,30 +103,17 @@ def run_segmentation(fs, model, source, dest, dataset_ID, flatfield_left, flatfi
         threshold = 0.5
         mask = (255*(result > threshold)).astype(np.uint8)
         # Store segmentation mask
-        if save_masks:
-            mask_path = dest + '/' + dataset_ID + '/segmentation_mask_binary/mask_' + file_id + '.bmp'
+        mask_path = dest + '/' + dataset_ID + '/segmentation_mask_binary/' + file_id + '.bmp'
+        if dest_remote == False:
+            os.makedirs(dest + '/' + dataset_ID + '/segmentation_mask_binary/', exist_ok=True)
+        with dest_open(mask_path, 'wb') as f:
             if dest_remote == False:
-                os.makedirs(dest + '/' + dataset_ID + '/segmentation_mask_binary/', exist_ok=True)
-            with dest_open(mask_path, 'wb') as f:
-                if dest_remote == False:
-                    imageio.imwrite(f.name, mask, format='bmp')
-                else:
-                    imageio.imwrite(f, mask, format='bmp')
+                imageio.imwrite(f.name, mask, format='bmp')
+            else:
+                imageio.imwrite(f, mask, format='bmp')
         # Get number of cells, store to DF
-        labeled_mask, n_cells = label(mask)
-        total_cells += n_cells
+        __, n_cells = label(mask)
         local_segmentation_stat_df = pd.concat([pd.DataFrame([[y, x, n_cells]], columns=local_segmentation_stat_df.columns), local_segmentation_stat_df], ignore_index=True)
-        # Store overlay
-        if save_overlays: 
-            overlay = overlay_mask_dpc(colorize_mask(labeled_mask), I_DPC)
-            overlay_path = dest + '/' + dataset_ID + '/segmentation_mask_binary/overlay_' + file_id + '.bmp'
-            if dest_remote == False:
-                os.makedirs(dest + '/' + dataset_ID + '/segmentation_mask_binary/', exist_ok=True)
-            with dest_open(overlay_path, 'wb') as f:
-                if dest_remote == False:
-                    imageio.imwrite(f.name, overlay, format='bmp')
-                else:
-                    imageio.imwrite(f, overlay, format='bmp')
         
     # Save DF - overwrite
     totalcell_filename = dest + '/' + dataset_ID + '/total_cells.txt'
