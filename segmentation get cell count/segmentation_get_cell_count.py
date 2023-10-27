@@ -11,7 +11,7 @@ import json
 from utils import *
 import cv2
 
-DEBUGGING = True # set true to only process 4 FOVs from each dataset
+DEBUGGING = False # set true to only process 4 FOVs from each dataset
 
 def main():
     # Get the M2U-Net model
@@ -25,7 +25,7 @@ def main():
     # Where to find the data - can be local or remote
     src = 'gs://octopi-malaria-uganda-2022-data'
     # Where to save the CSVs - can be local or remote
-    dst_msk = 'results' #'gs://octopi-malaria-data-processing'
+    dst = 'results' #'gs://octopi-malaria-data-processing'
     # Options to save masks, overlays
     save_masks = True
     save_overlays = True
@@ -33,12 +33,13 @@ def main():
     flatfield_left = np.load('flatfield_left.npy')
     flatfield_right = np.load('flatfield_right.npy')
     # Get the datasets
-    with open('list of datasets.txt','r') as f:
+    datasets = 'list of datasets.txt'
+    with open(datasets,'r') as f:
         DATASET_ID = f.read()
         DATASET_ID = DATASET_ID.split('\n')
     for dataset_id in DATASET_ID:
         print(dataset_id)
-        count = run_segmentation(fs, model, src, dst_msk, dataset_id, flatfield_left, flatfield_right, save_masks, save_overlays)
+        count = run_segmentation(fs, model, src, dst, dataset_id, flatfield_left, flatfield_right, save_masks, save_overlays)
     return
 
 def run_segmentation(fs, model, source, dest, dataset_ID, flatfield_left, flatfield_right, save_masks, save_overlays):
