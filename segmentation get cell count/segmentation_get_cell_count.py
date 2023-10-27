@@ -9,8 +9,9 @@ import imageio
 import numpy as np
 import json
 from utils import *
+import cv2
 
-DEBUGGING = False # set true to only process 4 FOVs from each dataset
+DEBUGGING = True # set true to only process 4 FOVs from each dataset
 
 def main():
     # Get the M2U-Net model
@@ -19,12 +20,12 @@ def main():
     model = m2u(pretrained_model=model_path, use_trt=use_trt)
     # Get the GCSFS filesystem - set fs = None for local
     gcs_project = 'soe-octopi'
-    gcs_token = 'data-20220317-keys.json'
+    gcs_token = '/home/octopi-codex/Documents/keys/data-20220317-keys.json'
     fs = gcsfs.GCSFileSystem(project=gcs_project,token=gcs_token)
     # Where to find the data - can be local or remote
     src = 'gs://octopi-malaria-uganda-2022-data'
     # Where to save the CSVs - can be local or remote
-    dst_msk = 'gs://octopi-malaria-data-processing'
+    dst_msk = 'results' #'gs://octopi-malaria-data-processing'
     # Options to save masks, overlays
     save_masks = True
     save_overlays = True
@@ -123,14 +124,15 @@ def run_segmentation(fs, model, source, dest, dataset_ID, flatfield_left, flatfi
         
     # Save DF - overwrite
     totalcell_filename = dest + '/' + dataset_ID + '/total_cells.txt'
-    if not DEBUGGING:
-        with dest_open(csv_filename, 'wb') as f:
-            local_segmentation_stat_df.to_csv(f, encoding='utf-8', index=False)
-        with dest_open(totalcell_filename, 'wb') as f:
-            f.write(total_cells)
+    
+    with dest_open(csv_filename, 'wb') as f:
+        local_segmentation_stat_df.to_csv(f, encoding='utf-8', index=False)
+    with dest_open(totalcell_filename, 'wb') as f:
+        f.write(str(total_cells).encode('utf-8'))
+        
     return local_segmentation_stat_df
  
- def colorize_mask(labeled_mask):
+def colorize_mask(labeled_mask):
     # Color them
     colored_mask = np.array((labeled_mask * 83) % 255, dtype=np.uint8)
     colored_mask = cv2.applyColorMap(colored_mask, cv2.COLORMAP_HSV)
