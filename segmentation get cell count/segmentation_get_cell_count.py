@@ -25,7 +25,7 @@ def main():
     # Where to find the data - can be local or remote
     src = 'gs://octopi-malaria-uganda-2022-data'
     # Where to save the CSVs - can be local or remote
-    dst_msk = 'results' #'gs://octopi-malaria-data-processing'
+    dst = 'results' #'gs://octopi-malaria-data-processing'
     # Options to save masks, overlays
     save_masks = True
     save_overlays = True
@@ -33,7 +33,8 @@ def main():
     flatfield_left = np.load('flatfield_left.npy')
     flatfield_right = np.load('flatfield_right.npy')
     # Get the datasets
-    with open('list of datasets.txt','r') as f:
+    datasets = 'list of datasets.txt'
+    with open(datasets,'r') as f:
         DATASET_ID = f.read()
         DATASET_ID = DATASET_ID.split('\n')
     
