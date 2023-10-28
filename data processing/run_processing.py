@@ -17,7 +17,7 @@ if __name__ == '__main__':
 
   # gcs setting
   gcs_project = 'soe-octopi'
-  gcs_token = '/home/rinni/octopi-malaria/export spot images rb/data-20220317-keys.json'
+  gcs_token = '/home/octopi/Desktop/octopi-malaria/export spot images rb/data-20220317-keys.json'
   gcs_settings = {}
   gcs_settings['gcs_project'] = gcs_project
   gcs_settings['gcs_token'] = gcs_token
@@ -48,7 +48,7 @@ if __name__ == '__main__':
   # deterimine the size of the scan
   fs = gcsfs.GCSFileSystem(project=gcs_project,token=gcs_token)
 
-  f = open('/home/rinni/octopi-malaria/data processing/list of datasets.txt','r')
+  f = open('/home/octopi/Desktop/octopi-malaria/data processing/list of datasets.txt','r')
   DATASET_ID = f.read()
   DATASET_ID = DATASET_ID.split('\n')
   # TODO REMOVE
