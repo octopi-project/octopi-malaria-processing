@@ -38,14 +38,14 @@ import matplotlib as mpl
 ##########################################################
 ################  Default configurations  ################
 ##########################################################
-NUM_ROWS = 6
+NUM_ROWS = 5
 MAX_NUM_ROWS_DISPLAYED_PER_PAGE = 6
 num_cols = 10
 SCALE_FACTOR = 8
 
 K_SIMILAR_DEFAULT = 250
 
-DEV_MODE = True
+DEV_MODE = False
 
 GENERATE_UMAP_FOR_FULL_DATASET = True
 SHOW_IMAGE_IN_SCATTER_PLOT_ON_SELECTION = False
@@ -1282,7 +1282,7 @@ class BarPlotWidget(QWidget):
         vlayout.addWidget(self.view)
         self.setLayout(vlayout)
 
-        self._update_plot()
+        # self._update_plot()
 
     def _update_plot(self):
         self.axes.clear()
